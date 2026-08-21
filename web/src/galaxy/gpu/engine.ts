@@ -1,7 +1,7 @@
 import type { Galaxy } from "../loader";
 import { zoneColours } from "../palette.mjs";
-import { HL, tiers, pathTiers } from "../highlight.mjs";
-import { OrbitCamera } from "./camera";
+import { HL, tiers, pathTiers, spotTiers } from "../highlight.mjs";
+import { OrbitCamera, type CamState } from "./camera";
 import physicsWGSL from "./physics.wgsl?raw";
 import renderWGSL from "./render.wgsl?raw";
 import pickWGSL from "./pick.wgsl?raw";
@@ -657,6 +657,22 @@ export class GpuEngine {
     this.dirty = true;
   }
 
+  /** Deriva en reposo. `camera.moving()` la cuenta como movimiento, así que el
+   *  salto de frame en reposo se levanta solo mientras dure: sin eso el modo
+   *  atractor no movería nada — el bucle se estaría saltando el frame. */
+  setAttract(on: boolean) {
+    this.camera.setAttract(on);
+    this.dirty = true;
+  }
+
+  /** La órbita, para escribirla en un enlace, y de vuelta. */
+  cameraState(): CamState { return this.camera.state(); }
+
+  setCameraState(s: CamState) {
+    this.camera.setState(s);
+    this.dirty = true;
+  }
+
   /** Vista completa. Es la tecla `Inicio` en forma de método: la barra de
    *  herramientas la necesita, y estar sólo en el teclado la dejaba invisible
    *  para quien no abre la leyenda. */
@@ -687,6 +703,17 @@ export class GpuEngine {
     // por encima de un nodo del camino no debe rebajarlo.
     this.selected = path && path.length ? path[path.length - 1] : null;
     pathTiers(this.g, path, this.dimHost);
+    this.device.queue.writeBuffer(this.dim, 0, this.dimHost);
+    this.hoverId = null;
+    this.dirty = true;
+  }
+
+  /** El destello del atractor: enciende una palabra sin apagar la galaxia. Ver
+   *  `spotTiers` — aquí no hay nadie pidiendo ver un punto, así que atenuar el
+   *  resto sería tapar lo único que se está enseñando. */
+  spotlight(id: number | null) {
+    this.selected = id;
+    spotTiers(this.g, id, this.dimHost);
     this.device.queue.writeBuffer(this.dim, 0, this.dimHost);
     this.hoverId = null;
     this.dirty = true;

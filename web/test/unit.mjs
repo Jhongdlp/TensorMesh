@@ -17,6 +17,13 @@ import { fold, buildIndex, exact, suggest, resolve, SUGGEST } from "../src/galax
 import { shortestPath, hops } from "../src/galaxy/path.mjs";
 import { HL, tiers, pathTiers } from "../src/galaxy/highlight.mjs";
 import { KeyFly } from "../src/galaxy/keys.mjs";
+import {
+  MAX_WORDS, pairs, matrix, ranked, shared, typical, mds, dist,
+} from "../src/galaxy/compare.mjs";
+import { regions, core } from "../src/galaxy/regions.mjs";
+import { compile, match, MAX as PAT_MAX } from "../src/galaxy/pattern.mjs";
+import { query, invNorms, nearest } from "../src/galaxy/analogy.mjs";
+import { encodeCam, decodeCam } from "../src/galaxy/share.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const LANG = process.argv[2] || "es";
@@ -141,10 +148,14 @@ ok(fold("") === "", "el plegado aguanta la cadena vacía");
 {
   // El caso que motivó todo esto: la palabra existe con tilde y se escribe sin.
   const conTilde = g.labels.findIndex((w) => /[áéíóúñ]/.test(w) && w.length > 3);
-  const plegada = fold(g.labels[conTilde]);
-  const hit = exact(idx, plegada);
-  ok(hit >= 0 && fold(g.labels[hit]) === plegada,
-     "escribir sin tildes encuentra la palabra", `«${g.labels[conTilde]}» ← «${plegada}»`);
+  if (conTilde >= 0) {
+    const plegada = fold(g.labels[conTilde]);
+    const hit = exact(idx, plegada);
+    ok(hit >= 0 && fold(g.labels[hit]) === plegada,
+       "escribir sin tildes encuentra la palabra", `«${g.labels[conTilde]}» ← «${plegada}»`);
+  } else {
+    ok(true, "escribir sin tildes encuentra la palabra (sin palabras con tilde en este idioma)");
+  }
 }
 
 {
@@ -173,6 +184,18 @@ ok(fold("") === "", "el plegado aguanta la cadena vacía");
      "Enter a medias cae en la mejor sugerencia", `«${pre}» → «${g.labels[r]}»`);
   ok(resolve(idx, g, "   ") === -1, "sólo espacios no resuelve a nada");
   ok(resolve(idx, g, "qxzwvkj") === -1, "una palabra inventada no resuelve a nada");
+
+  if (LANG === "es") {
+    const plur = resolve(idx, g, "perross");
+    ok(plur >= 0 && g.labels[plur] === "perros", "resuelve plural con s extra o similar", `«perross» → «${g.labels[plur]}»`);
+    const difusa = resolve(idx, g, "cienncia");
+    ok(difusa >= 0 && g.labels[difusa] === "ciencia", "resuelve palabra con error por Levenshtein", `«cienncia» → «${g.labels[difusa]}»`);
+  } else if (LANG === "en") {
+    const plur = resolve(idx, g, "dogss");
+    ok(plur >= 0 && g.labels[plur] === "dogs", "resuelve plural con s extra o similar", `«dogss» → «${g.labels[plur]}»`);
+    const difusa = resolve(idx, g, "scieence");
+    ok(difusa >= 0 && g.labels[difusa] === "science", "resuelve palabra con error por Levenshtein", `«scieence» → «${g.labels[difusa]}»`);
+  }
 }
 
 // -------------------------------------------------------------------- camino
@@ -281,6 +304,378 @@ console.log(`\n— teclado ${"—".repeat(49)}`);
   ok(!f.active(), "cambiar de modo corta la inercia");
 
   ok(f.read().fwd === 0, "sin teclas la velocidad es cero");
+}
+
+// ------------------------------------------------------------------ vectores
+/** Lector de `vecs.bin` con la misma firma que `Vectors` de la web.
+ *
+ *  Aquí se lee el archivo entero de disco en vez de pedir rangos por HTTP: lo
+ *  que este test cubre es la **aritmética** —cuantizar, renormalizar, coseno— y
+ *  el contrato de bytes, no el transporte. La rama de `Range:` sólo se puede
+ *  ejercitar contra un servidor, y montar uno aquí probaría `fetch`, no el
+ *  atlas. Lo que sí se comprueba, y es lo que se rompería en silencio, es que
+ *  el offset `i * dims` cae en la palabra `i`: contra los pesos del CSR, que
+ *  son el mismo coseno calculado por el pipeline sin pasar por aquí. */
+function vectores() {
+  const path = join(DATA, "vecs.bin");
+  let raw;
+  try {
+    raw = readFileSync(path);
+  } catch {
+    return null;
+  }
+  const D = g.meta.dims;
+  const cache = new Map();
+  const get = (i) => {
+    const hit = cache.get(i);
+    if (hit) return hit;
+    const out = new Float32Array(D);
+    let sum = 0;
+    for (let k = 0; k < D; k++) {
+      const v = raw.readInt8(i * D + k);
+      out[k] = v;
+      sum += v * v;
+    }
+    const inv = sum > 0 ? 1 / Math.sqrt(sum) : 0;
+    for (let k = 0; k < D; k++) out[k] *= inv;
+    cache.set(i, out);
+    return out;
+  };
+  return {
+    bytes: raw.length,
+    available: true,
+    get,
+    cos(a, b) {
+      const u = get(a), v = get(b);
+      let s = 0;
+      for (let k = 0; k < D; k++) s += u[k] * v[k];
+      return s < -1 ? -1 : s > 1 ? 1 : s;
+    },
+  };
+}
+
+console.log(`\n— vectores 300D ${"—".repeat(43)}`);
+const vec = vectores();
+if (!vec) {
+  console.log("  -- vecs.bin no está publicado; el comparador quedaría apagado");
+  console.log("     (pipeline/vectors.py <idioma> y copiar a web/public/data/)");
+} else {
+  const D = g.meta.dims;
+  ok(typeof D === "number" && D > 0, "meta.json declara el tamaño del registro", `dims=${D}`);
+  ok(vec.bytes === n * D, "vecs.bin mide exactamente n x dims bytes",
+     `${vec.bytes} = ${n} x ${D}`);
+
+  // Norma: se renormaliza al decodificar, así que todo vector debe salir a 1.
+  let peorNorma = 0;
+  for (let i = 0; i < n; i += 617) {
+    const v = vec.get(i);
+    let s = 0;
+    for (let k = 0; k < D; k++) s += v[k] * v[k];
+    peorNorma = Math.max(peorNorma, Math.abs(Math.sqrt(s) - 1));
+  }
+  ok(peorNorma < 1e-5, "todo vector sale normalizado", `peor ${peorNorma.toExponential(1)}`);
+
+  // La comprobación que de verdad ata el archivo a la galaxia: el coseno
+  // calculado aquí contra el peso que el pipeline guardó en el CSR. Si los
+  // offsets se desalinearan por una palabra, esto se dispara.
+  //
+  // El margen es 0,012 y no 0,0033 (el error medido de la cuantización a int8)
+  // porque el peso del CSR es **otro** cuantizado, a uint8 sobre [0,1]: sólo
+  // ese paso ya vale 1/255 = 0,0039. Los dos errores se suman.
+  let peorArista = 0, mediaArista = 0, cuenta = 0;
+  for (let i = 0; i < n; i += 211) {
+    for (let j = g.offsets[i]; j < g.offsets[i + 1]; j++) {
+      const e = Math.abs(vec.cos(i, g.targets[j]) - g.weights[j] / 255);
+      peorArista = Math.max(peorArista, e);
+      mediaArista += e;
+      cuenta++;
+    }
+  }
+  mediaArista /= cuenta;
+  ok(peorArista < 0.012, "el coseno de vecs.bin cuadra con el peso del CSR",
+     `${cuenta} aristas · medio ${mediaArista.toFixed(5)} · peor ${peorArista.toFixed(5)}`);
+
+  ok(Math.abs(vec.cos(7, 7) - 1) < 1e-5, "una palabra consigo misma da 1");
+  ok(Math.abs(vec.cos(3, 9) - vec.cos(9, 3)) < 1e-9, "el coseno es simétrico");
+}
+
+// ----------------------------------------------------------------- comparador
+console.log(`\n— comparador ${"—".repeat(46)}`);
+{
+  ok(pairs([1, 2, 3, 4, 5]).length === 10, `${MAX_WORDS} palabras dan 10 parejas`);
+  ok(pairs([1]).length === 0 && pairs([]).length === 0,
+     "con una palabra o ninguna no hay pareja que medir");
+  const ps = pairs([4, 7, 9]);
+  ok(ps.every(([a, b]) => a !== b), "ninguna pareja repite palabra");
+  ok(new Set(ps.map(([a, b]) => `${a}-${b}`)).size === ps.length, "ninguna pareja se repite");
+
+  // dist() es la distancia euclídea real entre vectores unitarios, no una
+  // conversión inventada: es lo que hace honesta a la constelación.
+  ok(dist(1) === 0, "dos palabras idénticas están a distancia 0");
+  ok(Math.abs(dist(-1) - 2) < 1e-9, "dos opuestas, a distancia 2");
+  ok(dist(0) > dist(0.5), "menos parecido es más lejos");
+
+  const ref = typical(g);
+  ok(ref > 0.3 && ref < 0.9, "la similitud típica entre vecinos es creíble", ref.toFixed(3));
+  // Contra la mediana exacta: `typical` muestrea, y si la muestra se desviara
+  // la línea de referencia de las barras estaría en el sitio equivocado.
+  const todos = Array.from(g.weights, (w) => w / 255).sort((a, b) => a - b);
+  const exacta = todos[todos.length >> 1];
+  ok(Math.abs(ref - exacta) < 0.01, "la muestra cae sobre la mediana real",
+     `${ref.toFixed(3)} vs ${exacta.toFixed(3)}`);
+
+  // --- vecinos compartidos
+  {
+    // Dos palabras que sí tienen vecinos en común: una y un vecino suyo.
+    const a = 100;
+    const b = g.targets[g.offsets[a]];
+    const s = shared(g, [a, b]);
+    ok(s.every((x) => x.with.length > 1), "un vecino común lo es de más de una");
+    ok(s.every((x) => x.id !== a && x.id !== b), "una elegida no es vecina común de sí misma");
+    ok(s.every((x) => x.with.every((w) => adj(x.id, w))),
+       "todo vecino común es de verdad vecino en el grafo");
+    const ord = s.every((x, i) => i === 0 || s[i - 1].with.length >= x.with.length);
+    ok(ord, "los que más comparten van primero");
+    ok(shared(g, []).length === 0, "sin palabras no hay terreno común");
+  }
+
+  // --- matriz y orden
+  if (vec) {
+    const ids = [100, g.targets[g.offsets[100]], 2000, 31000];
+    const M = matrix(vec, ids);
+    ok(M !== null, "la matriz sale cuando están todos los vectores");
+    ok(M.every((r, i) => r[i] === 1), "la diagonal es 1 exacto, sin ruido de redondeo");
+    ok(M.every((r, i) => r.every((v, j) => Math.abs(v - M[j][i]) < 1e-9)),
+       "la matriz es simétrica");
+    ok(M.every((r) => r.every((v) => v >= -1 && v <= 1)), "toda celda es un coseno");
+
+    const r = ranked(vec, ids);
+    ok(r.length === 6, "cuatro palabras dan seis parejas ordenadas");
+    ok(r.every((x, i) => i === 0 || r[i - 1].s >= x.s), "de más a menos parecidas");
+    ok(r[0].s > r[r.length - 1].s, "la primera pareja se parece más que la última");
+    // Las dos primeras son vecinas en el grafo, así que su similitud tiene que
+    // coincidir con el peso de esa arista. No se comprueba que sea *alta*: el
+    // CSR está ordenado por nodo y no por peso, así que `offsets[a]` puede ser
+    // el vecino más flojo de los ocho — y con 0,48 lo era.
+    const vecinas = r.find((x) => (x.a === ids[0] && x.b === ids[1]) ||
+                                  (x.a === ids[1] && x.b === ids[0]));
+    let peso = 0;
+    for (let j = g.offsets[ids[0]]; j < g.offsets[ids[0] + 1]; j++) {
+      if (g.targets[j] === ids[1]) { peso = g.weights[j] / 255; break; }
+    }
+    ok(Math.abs(vecinas.s - peso) < 0.012,
+       "la pareja que es arista del grafo mide lo que el grafo dice",
+       `${vecinas.s.toFixed(3)} vs ${peso.toFixed(3)}`);
+
+    // Un vector que falta apaga la vista entera en vez de dibujar un hueco.
+    const roto = { cos: (a, b) => (a === 2000 || b === 2000 ? null : vec.cos(a, b)) };
+    ok(matrix(roto, ids) === null && ranked(roto, ids) === null,
+       "si falta un vector, no hay matriz a medias");
+  }
+
+  // --- constelación
+  {
+    // Un cuadrado de lado 1: MDS clásico tiene que devolverlo exacto, porque
+    // las distancias ya viven en un plano. Si el doble centrado o Jacobi se
+    // tuercen, el estrés deja de ser 0 y esto lo dice.
+    const P = [[0, 0], [1, 0], [1, 1], [0, 1]];
+    const d2 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+    const sim = P.map((a) => P.map((b) => 1 - d2(a, b) ** 2 / 2));
+    const r = mds(sim);
+    let peor = 0;
+    for (let i = 0; i < 4; i++) {
+      for (let j = i + 1; j < 4; j++) {
+        peor = Math.max(peor, Math.abs(d2(P[i], P[j]) - d2(r.xy[i], r.xy[j])));
+      }
+    }
+    ok(r.stress < 1e-9, "un cuadrado se recupera sin estrés", r.stress.toExponential(1));
+    ok(peor < 1e-9, "y con las distancias intactas", peor.toExponential(1));
+
+    // Tres en línea: el segundo eje no existe y tiene que salir plano, no NaN.
+    const L = [[0, 0], [1, 0], [3, 0]];
+    const rl = mds(L.map((a) => L.map((b) => 1 - d2(a, b) ** 2 / 2)));
+    ok(rl.xy.every((p) => p[1] === 0 || Math.abs(p[1]) < 1e-9),
+       "tres palabras en línea no se inventan una segunda dimensión");
+    ok(rl.xy.every((p) => Number.isFinite(p[0]) && Number.isFinite(p[1])),
+       "ninguna coordenada sale NaN");
+
+    ok(mds([]).xy.length === 0 && mds([[1]]).xy.length === 1,
+       "cero y una palabra no revientan la proyección");
+    ok(mds([[1, 0.5], [0.5, 1]]).xy.length === 2, "dos palabras dan dos puntos");
+
+    // Sobre palabras de verdad: el estrés tiene que ser un número entre 0 y 1.
+    if (vec) {
+      const ids = [100, 2000, 31000, 44000, 7];
+      const M = matrix(vec, ids);
+      const r5 = mds(M);
+      ok(r5.xy.length === 5 && r5.xy.every((p) => p.every(Number.isFinite)),
+         "cinco palabras reales dan cinco puntos finitos");
+      ok(r5.stress >= 0 && r5.stress < 1, "el estrés es una fracción", r5.stress.toFixed(3));
+      console.log(`     aplanar 300D a 2D con 5 palabras pierde el ${(r5.stress * 100).toFixed(0)}%`);
+    }
+  }
+}
+
+// ------------------------------------------------------------------ regiones
+console.log(`\n— leyenda de regiones ${"—".repeat(38)}`);
+{
+  const rs = regions(g);
+  ok(rs.length === g.meta.communities,
+     "hay tantas regiones como dice meta.json", `${rs.length}`);
+
+  const suma = rs.reduce((a, r) => a + r.members.length, 0);
+  ok(suma === g.meta.nodes, "cada palabra cae en exactamente una región");
+
+  ok(rs.every((r, i) => i === 0 || rs[i - 1].members.length >= r.members.length),
+     "salen de la más grande a la más pequeña");
+
+  ok(rs.every((r) => r.name.length > 0 && r.name.every((i) => g.community[i] === r.id)),
+     "toda región se nombra con palabras suyas");
+
+  // Nombrar con palabras vacías titularía media galaxia con «de · la · que».
+  const conLlenas = rs.filter((r) => r.members.some((i) => !g.flags[i]));
+  ok(conLlenas.every((r) => r.name.every((i) => !g.flags[i])),
+     "ninguna región con palabras llenas se nombra con vacías");
+
+  // El nombre es el de las más frecuentes, no el de las primeras que salgan.
+  ok(rs.every((r) => {
+    const llenas = r.members.filter((i) => !g.flags[i]);
+    if (llenas.length < r.name.length) return true;
+    const mejor = Math.min(...llenas.map((i) => g.rank[i]));
+    return g.rank[r.name[0]] === mejor;
+  }), "la primera del nombre es la más frecuente de la región");
+
+  const grande = rs[0];
+  const nucleo = core(g, grande);
+  const dentro = new Set(grande.members);
+  ok(nucleo.length <= grande.members.length && nucleo.every((i) => dentro.has(i)),
+     "el núcleo es un subconjunto de la región", `${nucleo.length}/${grande.members.length}`);
+
+  // Y es el subconjunto *central*: encuadrar sobre los miembros sueltos deja el
+  // barrio como un punto en mitad de la pantalla.
+  const d = (i) => Math.hypot(g.positions[i * 3] - grande.centroid[0],
+                              g.positions[i * 3 + 1] - grande.centroid[1],
+                              g.positions[i * 3 + 2] - grande.centroid[2]);
+  const radioNucleo = Math.max(...nucleo.map(d));
+  const radioTodo = Math.max(...grande.members.map(d));
+  ok(radioNucleo <= radioTodo, "y el más apretado de los dos",
+     `${radioNucleo.toFixed(2)} <= ${radioTodo.toFixed(2)}`);
+
+  console.log(`     la mayor: ${grande.name.map((i) => g.labels[i]).join(" · ")} ` +
+              `(${grande.members.length} palabras)`);
+}
+
+// ------------------------------------------------------------------ familias
+console.log(`\n— familias por patrón ${"—".repeat(38)}`);
+{
+  const sufijo = LANG === "en" ? "*ly" : "*mente";
+  const prefijo = LANG === "en" ? "un*" : "des*";
+
+  const suf = match(idx, g, sufijo);
+  const terminacion = sufijo.slice(1);
+  ok(suf.ids.length > 0, `«${sufijo}» encuentra palabras`, `${suf.total}`);
+  ok(suf.ids.every((i) => fold(g.labels[i]).endsWith(terminacion)),
+     "y todas terminan igual");
+
+  const pre = match(idx, g, prefijo);
+  ok(pre.ids.every((i) => fold(g.labels[i]).startsWith(prefijo.slice(0, -1))),
+     `«${prefijo}» sólo devuelve palabras que empiezan así`, `${pre.total}`);
+
+  // Sin comodín se busca «dónde aparece»: para una palabra exacta ya está el
+  // buscador, y un patrón que sólo casa consigo mismo no es una familia.
+  const dentro = match(idx, g, "cas");
+  ok(dentro.ids.every((i) => fold(g.labels[i]).includes("cas")),
+     "sin comodín, contiene", `${dentro.total}`);
+
+  ok(suf.ids.every((i, k) => k === 0 || g.rank[suf.ids[k - 1]] <= g.rank[i]),
+     "las coincidencias salen por frecuencia");
+
+  const todo = match(idx, g, "*a*", 10);
+  ok(todo.ids.length === 10 && todo.total > 10 && todo.capped,
+     "el tope recorta y lo dice", `${todo.total} → 10`);
+  ok(PAT_MAX >= 100, "el tope por defecto deja sitio para una familia entera");
+
+  // La caja la teclea cualquiera: un paréntesis suelto no puede reventar nada.
+  ok(compile("(") !== null && match(idx, g, "(").total >= 0,
+     "un patrón con metacaracteres no lanza");
+  ok(compile("") === null && match(idx, g, "  ").ids.length === 0,
+     "un patrón vacío no enciende nada");
+
+  // La tilde no puede ser un requisito: el índice está plegado.
+  if (LANG === "es") {
+    const cion = match(idx, g, "*cion");
+    ok(cion.total > 0, "«*cion» encuentra las de «-ción» sin tilde", `${cion.total}`);
+  }
+}
+
+// ----------------------------------------------------------------- analogías
+console.log(`\n— analogías ${"—".repeat(48)}`);
+{
+  let raw = null;
+  try {
+    const b = readFileSync(join(DATA, "vecs.bin"));
+    raw = new Int8Array(b.buffer, b.byteOffset, b.length);
+  } catch { /* sin vecs.bin no hay analogía, y el panel se apaga solo */ }
+
+  if (!raw) {
+    console.log("  -- vecs.bin no está publicado; las analogías quedarían apagadas");
+  } else {
+    const D = g.meta.dims;
+    const n = g.meta.nodes;
+    const inv = invNorms(raw, D, n);
+    ok(inv.length === n && inv.every(Number.isFinite), "toda fila tiene norma finita");
+    ok(inv.every((v) => v > 0), "y ninguna es el vector cero");
+
+    // Una palabra es su propia vecina más cercana: si el offset `i * dims` no
+    // cayera en la fila `i`, esto se caería.
+    const yo = vec.get(1234);
+    const top = nearest(yo, raw, D, n, inv, 3);
+    ok(top[0].id === 1234 && Math.abs(top[0].cos - 1) < 0.02,
+       "cada palabra es su vecina más cercana", `cos ${top[0].cos.toFixed(3)}`);
+    ok(top.every((r, k) => k === 0 || top[k - 1].cos >= r.cos),
+       "las respuestas salen ordenadas");
+
+    const sin = nearest(yo, raw, D, n, inv, 3, [1234]);
+    ok(!sin.some((r) => r.id === 1234), "lo excluido no aparece");
+    ok(sin.length === 3 && new Set(sin.map((r) => r.id)).size === 3,
+       "y no se repite ninguna");
+
+    // El vector consulta es unitario: el coseno de abajo cuenta con ello.
+    const trío = LANG === "en" ? ["king", "man", "woman"] : ["rey", "hombre", "mujer"];
+    const ids = trío.map((w) => resolve(idx, g, w));
+    if (ids.every((i) => i >= 0)) {
+      const q = query(vec.get(ids[0]), vec.get(ids[1]), vec.get(ids[2]));
+      let norma = 0;
+      for (let k = 0; k < D; k++) norma += q[k] * q[k];
+      ok(Math.abs(Math.sqrt(norma) - 1) < 1e-5, "la consulta sale normalizada");
+
+      const r = nearest(q, raw, D, n, inv, 5, ids);
+      ok(r.length === 5 && r.every((x) => x.cos >= -1 && x.cos <= 1),
+         "cinco respuestas y todas son cosenos");
+      ok(!r.some((x) => ids.includes(x.id)),
+         "las tres de la pregunta quedan fuera de la respuesta");
+      console.log(`     ${trío[0]} − ${trío[1]} + ${trío[2]} = ` +
+                  r.map((x) => `${g.labels[x.id]} ${x.cos.toFixed(2)}`).join(" · "));
+    }
+  }
+}
+
+// ------------------------------------------------------------ vista en la url
+console.log(`\n— compartir la vista ${"—".repeat(39)}`);
+{
+  const c = { t: [1.2345, -8.5, 0], d: 42.125, th: 1.5708, ph: 0.9 };
+  const ida = decodeCam(encodeCam(c));
+  ok(ida !== null, "una vista codificada se vuelve a leer");
+  ok(Math.abs(ida.t[0] - 1.2345) < 1e-3 && Math.abs(ida.d - 42.125) < 1e-3 &&
+     Math.abs(ida.th - c.th) < 1e-3 && Math.abs(ida.ph - c.ph) < 1e-3,
+     "y con los seis números intactos hasta la milésima");
+  ok(encodeCam(c).split(",").length === 6, "son seis números y ni uno más");
+
+  // La URL la escribe cualquiera: nada de esto puede dejar la cámara en NaN.
+  ok(decodeCam(null) === null && decodeCam("") === null, "sin parámetro, sin cámara");
+  ok(decodeCam("1,2,3") === null, "seis o ninguno");
+  ok(decodeCam("a,b,c,d,e,f") === null, "letras, no");
+  ok(decodeCam("0,0,0,0,1,1") === null, "distancia cero degenera el lookAt: se ignora");
 }
 
 console.log(`\n${failed === 0 ? "TODO OK" : `${failed} FALLOS`}\n`);

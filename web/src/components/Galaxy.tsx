@@ -7,7 +7,18 @@ import Controls from "./Controls";
 import KeyHelp from "./KeyHelp";
 import WordSearch from "./WordSearch";
 import { buildIndex, resolve } from "../galaxy/search.mjs";
+import { typing } from "../galaxy/keys.mjs";
 import { shortestPath, hops } from "../galaxy/path.mjs";
+import { Vectors } from "../galaxy/vectors";
+import { MAX_WORDS } from "../galaxy/compare.mjs";
+import Compare from "./Compare";
+import Welcome, { introPending } from "./Welcome";
+import Legend from "./Legend";
+import Pattern from "./Pattern";
+import Analogy from "./Analogy";
+import Start, { common } from "./Start";
+import { encodeCam, decodeCam } from "../galaxy/share.mjs";
+import type { CamState } from "../galaxy/gpu/camera";
 
 const LANGS = [
   { id: "es", name: "español" },
@@ -20,7 +31,13 @@ const COPY = {
         freq: "frecuencia", stop: "palabra vacía",
         live: "webgpu · simulación viva", static: "webgl · posiciones fijas",
         hint: "pasa el ratón sobre un punto · clic para abrirlo",
+        hintOut: "clic en el vacío o esc para soltarla",
+        shut: "cerrar", esc: "esc", drop: "soltar",
+        held: (w: string) => `mirando «${w}»`,
+        heldPath: (a: string, b: string) => `camino «${a}» → «${b}»`,
+        heldGroup: (k: number) => `${k} palabras resaltadas`,
         keys: "teclas",
+        guide: "qué es esto",
         nbrs: "vecinos más cercanos",
         pathTo: "camino hasta…", pathHead: "camino", pathBack: "volver a la palabra",
         steps: (k: number) => `${k} ${k === 1 ? "salto" : "saltos"}`,
@@ -30,13 +47,89 @@ const COPY = {
         open: "desplegar", close: "plegar", whole: "vista completa",
         navOrbit: "órbita", navFly: "vuelo",
         foot: "similitud coseno en 300D — no la distancia que ves",
+        compare: "comparar", addTo: "comparar esta palabra",
+        cmp: {
+          add: "añadir una palabra…",
+          hint: "añade dos o más palabras y verás cuánto se parecen",
+          hintFew: "falta una más para poder comparar",
+          full: (n: number) => `el máximo son ${n} palabras · quita una para añadir otra`,
+          bars: "parecido por pareja",
+          grid: "matriz",
+          map: "constelación",
+          mapNote: "en un plano, no en la galaxia",
+          stress: (v: number) => `${Math.round(v * 100)}% de distancia perdida al aplanar`,
+          ref: "dos palabras vecinas se parecen, de media,",
+          hops: "saltos en el grafo",
+          hopsNone: "sin camino",
+          step: (k: number) => `${k} ${k === 1 ? "salto" : "saltos"}`,
+          shared: "vecinos en común",
+          sharedNone: "ningún vecino en común: se parecen sin tocarse en el grafo",
+          sharedWith: (k: number) => `${k} de ellas`,
+          clear: "vaciar",
+          loading: "pidiendo vectores…",
+          off: "los vectores 300D no están publicados (falta vecs.bin)",
+          foot: "todo medido en 300D — la constelación es una proyección de esos números",
+        },
+        homeKey: "inicio",
+        zen: "pantalla completa", zenOut: "salir",
+        zenNote: "sólo la galaxia · f o esc para volver",
+        share: "compartir esta vista", shareOk: "enlace copiado",
+        shareNo: "el navegador no dejó copiar el enlace",
+        idle: "el atlas gira solo", idleOut: "mueve el ratón para tomarlo",
+        zones: {
+          tab: "regiones",
+          note: "el color de la malla, en palabras · pásales el ratón por encima",
+          words: (n: number) => `${n.toLocaleString("es")} palabras`,
+          foot: "el nombre de una región son sus palabras más frecuentes: nadie la ha etiquetado",
+        },
+        pat: {
+          tab: "familias",
+          ph: "*mente",
+          note: "enciende todas las palabras que comparten una forma · «*» es el comodín",
+          hits: (n: number) => `${n.toLocaleString("es")} palabras casan`,
+          none: "ninguna palabra casa con ese patrón",
+          capped: (k: number) => `se resaltan las ${k} más frecuentes`,
+          clear: "quitar el resalte",
+          foot: "si se reparten por todos los barrios, lo que agrupa aquí es el significado y no la terminación",
+          ex: ["*mente", "*ción", "des*", "*ito"],
+        },
+        ana: {
+          tab: "analogías",
+          note: "a − b + c: la dirección que va de b a a, aplicada sobre c",
+          slots: ["", "−", "+"] as [string, string, string],
+          pick: "una palabra…",
+          run: "resolver",
+          need: "elige tres palabras",
+          loading: (pct: number) => `descargando los vectores… ${pct}%`,
+          weigh: "midiendo las 50.000…",
+          none: "sin respuesta",
+          off: "los vectores 300D no están publicados (falta vecs.bin)",
+          foot: "coseno en 300D contra las 50.000 · las tres de la pregunta quedan fuera",
+          ex: [["rey", "hombre", "mujer"], ["madrid", "españa", "francia"],
+               ["mayor", "grande", "pequeño"]] as [string, string, string][],
+        },
+        start: {
+          head: "por dónde empezar",
+          note: "clica cualquier punto de la galaxia, o entra por aquí",
+          rnd: "palabra al azar",
+          road: "camino sorpresa",
+          guide: "qué es esto",
+          foot: "cada punto es una palabra ·",
+          ex: ["amor", "guerra", "azul", "perro", "música", "dinero"],
+        },
         missing: (q: string, n: number) => `«${q}» no está en las ${n} palabras de esta galaxia` },
   en: { search: "search a word…", words: "words", edges: "edges",
         regions: "regions", loading: "loading binaries…", region: "region",
         freq: "frequency", stop: "stop word",
         live: "webgpu · live simulation", static: "webgl · fixed positions",
         hint: "hover a dot · click to open it",
+        hintOut: "click empty space or press esc to let it go",
+        shut: "close", esc: "esc", drop: "let go",
+        held: (w: string) => `looking at “${w}”`,
+        heldPath: (a: string, b: string) => `path “${a}” → “${b}”`,
+        heldGroup: (k: number) => `${k} words highlighted`,
         keys: "keys",
+        guide: "what is this",
         nbrs: "nearest neighbours",
         pathTo: "path to…", pathHead: "path", pathBack: "back to the word",
         steps: (k: number) => `${k} ${k === 1 ? "hop" : "hops"}`,
@@ -46,6 +139,76 @@ const COPY = {
         open: "expand", close: "collapse", whole: "whole galaxy",
         navOrbit: "orbit", navFly: "fly",
         foot: "cosine similarity in 300D — not the distance you see",
+        compare: "compare", addTo: "compare this word",
+        cmp: {
+          add: "add a word…",
+          hint: "add two or more words to see how alike they are",
+          hintFew: "one more word and there is something to compare",
+          full: (n: number) => `${n} words is the limit · drop one to add another`,
+          bars: "similarity by pair",
+          grid: "matrix",
+          map: "constellation",
+          mapNote: "on a plane, not in the galaxy",
+          stress: (v: number) => `${Math.round(v * 100)}% of distance lost when flattening`,
+          ref: "two neighbouring words are, on average, this alike:",
+          hops: "hops in the graph",
+          hopsNone: "no path",
+          step: (k: number) => `${k} ${k === 1 ? "hop" : "hops"}`,
+          shared: "neighbours in common",
+          sharedNone: "no shared neighbours: they are alike without touching in the graph",
+          sharedWith: (k: number) => `${k} of them`,
+          clear: "clear",
+          loading: "fetching vectors…",
+          off: "the 300D vectors are not published (vecs.bin missing)",
+          foot: "all measured in 300D — the constellation is a projection of those numbers",
+        },
+        homeKey: "home",
+        zen: "fullscreen", zenOut: "exit",
+        zenNote: "the galaxy alone · f or esc to come back",
+        share: "share this view", shareOk: "link copied",
+        shareNo: "the browser would not copy the link",
+        idle: "the atlas is drifting", idleOut: "move the mouse to take over",
+        zones: {
+          tab: "regions",
+          note: "the colour of the mesh, in words · hover to light one up",
+          words: (n: number) => `${n.toLocaleString("en")} words`,
+          foot: "a region is named by its most frequent words: nobody labelled it",
+        },
+        pat: {
+          tab: "families",
+          ph: "*ly",
+          note: "light up every word that shares a shape · “*” is the wildcard",
+          hits: (n: number) => `${n.toLocaleString("en")} words match`,
+          none: "no word matches that pattern",
+          capped: (k: number) => `the ${k} most frequent are highlighted`,
+          clear: "drop the highlight",
+          foot: "scattered across every neighbourhood means what groups here is meaning, not the ending",
+          ex: ["*ly", "*tion", "un*", "*ing"],
+        },
+        ana: {
+          tab: "analogies",
+          note: "a − b + c: the direction from b to a, applied to c",
+          slots: ["", "−", "+"] as [string, string, string],
+          pick: "a word…",
+          run: "solve",
+          need: "pick three words",
+          loading: (pct: number) => `downloading the vectors… ${pct}%`,
+          weigh: "weighing all 50,000…",
+          none: "no answer",
+          off: "the 300D vectors are not published (vecs.bin missing)",
+          foot: "cosine in 300D against all 50,000 · the three asked about are excluded",
+          ex: [["king", "man", "woman"], ["paris", "france", "italy"],
+               ["bigger", "big", "small"]] as [string, string, string][],
+        },
+        start: {
+          head: "where to start",
+          note: "click any dot in the galaxy, or come in through here",
+          rnd: "random word",
+          road: "surprise path",
+          guide: "what is this",
+          foot: "every dot is a word ·",
+          ex: ["love", "war", "blue", "dog", "music", "money"],
+        },
         missing: (q: string, n: number) => `“${q}” is not among this galaxy's ${n} words` },
 };
 
@@ -59,14 +222,25 @@ const ico = {
 };
 
 const IcoChevron = ({ open }: { open: boolean }) => (
-  <svg viewBox="0 0 24 24" width="15" height="15" {...ico} aria-hidden="true">
+  <svg viewBox="0 0 24 24" width="17" height="17" {...ico} aria-hidden="true">
     <path d={open ? "M14 6l-6 6 6 6" : "M10 6l6 6-6 6"} />
+  </svg>
+);
+
+/** Qué es esto: la presentación. Interrogante dibujado con el mismo trazo que
+ *  el resto, no el glifo «?» de la tipografía — a 15 px dentro de un botón de
+ *  1,7 rem el glifo se descuelga de la caja y no centra con los otros cuatro. */
+const IcoHelp = () => (
+  <svg viewBox="0 0 24 24" width="17" height="17" {...ico} aria-hidden="true">
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M9.7 9.4a2.4 2.4 0 014.6.9c0 1.6-2.3 2-2.3 3.4" />
+    <path d="M12 17.1v.01" strokeWidth="2" />
   </svg>
 );
 
 /** Órbita: el cuerpo quieto y la vista dando la vuelta alrededor. */
 const IcoOrbit = () => (
-  <svg viewBox="0 0 24 24" width="15" height="15" {...ico} aria-hidden="true">
+  <svg viewBox="0 0 24 24" width="17" height="17" {...ico} aria-hidden="true">
     <circle cx="12" cy="12" r="3" />
     <ellipse cx="12" cy="12" rx="9.5" ry="4.5" transform="rotate(-24 12 12)" />
   </svg>
@@ -74,16 +248,51 @@ const IcoOrbit = () => (
 
 /** Vuelo: la cámara suelta, avanzando. */
 const IcoFly = () => (
-  <svg viewBox="0 0 24 24" width="15" height="15" {...ico} aria-hidden="true">
+  <svg viewBox="0 0 24 24" width="17" height="17" {...ico} aria-hidden="true">
     <path d="M4 12l16-7-5.5 7 5.5 7z" />
   </svg>
 );
 
 /** Vista completa: el encuadre que abarca la galaxia entera. */
 const IcoFit = () => (
-  <svg viewBox="0 0 24 24" width="15" height="15" {...ico} aria-hidden="true">
+  <svg viewBox="0 0 24 24" width="17" height="17" {...ico} aria-hidden="true">
     <path d="M4 9V5.5A1.5 1.5 0 015.5 4H9M15 4h3.5A1.5 1.5 0 0120 5.5V9M20 15v3.5a1.5 1.5 0 01-1.5 1.5H15M9 20H5.5A1.5 1.5 0 014 18.5V15" />
     <circle cx="12" cy="12" r="2.5" />
+  </svg>
+);
+
+/** Comparar: dos cuerpos y la cuerda que los mide. */
+const IcoCompare = () => (
+  <svg viewBox="0 0 24 24" width="17" height="17" {...ico} aria-hidden="true">
+    <circle cx="7" cy="8" r="3" />
+    <circle cx="17" cy="16" r="3" />
+    <path d="M9.2 10.2l5.6 3.6" strokeDasharray="2 1.6" />
+  </svg>
+);
+
+/** Pantalla completa: las cuatro esquinas abriéndose. Es el icono que todo el
+ *  mundo ya sabe leer — reproductores de vídeo, mapas—, así que no hay nada que
+ *  inventar aquí. */
+const IcoExpand = () => (
+  <svg viewBox="0 0 24 24" width="17" height="17" {...ico} aria-hidden="true">
+    <path d="M9 4H4.8A.8.8 0 004 4.8V9M15 4h4.2a.8.8 0 01.8.8V9M20 15v4.2a.8.8 0 01-.8.8H15M9 20H4.8a.8.8 0 01-.8-.8V15" />
+  </svg>
+);
+
+/** Y las mismas cerrándose. */
+const IcoShrink = () => (
+  <svg viewBox="0 0 24 24" width="17" height="17" {...ico} aria-hidden="true">
+    <path d="M4 9h4.2a.8.8 0 00.8-.8V4M20 9h-4.2a.8.8 0 01-.8-.8V4M15 20v-4.2a.8.8 0 01.8-.8H20M9 20v-4.2a.8.8 0 00-.8-.8H4" />
+  </svg>
+);
+
+/** Compartir: un punto y los dos hilos que salen de él. */
+const IcoShare = () => (
+  <svg viewBox="0 0 24 24" width="17" height="17" {...ico} aria-hidden="true">
+    <circle cx="6" cy="12" r="2.4" />
+    <circle cx="17" cy="6" r="2.4" />
+    <circle cx="17" cy="18" r="2.4" />
+    <path d="M8.1 10.9l6.8-3.7M8.1 13.1l6.8 3.7" />
   </svg>
 );
 
@@ -107,7 +316,30 @@ interface Viewer {
   focus?(id: number): void | Promise<void>;
   /** Vuela hasta encuadrar un camino entero. */
   focusPath?(path: number[]): void | Promise<void>;
+  /** Deriva en reposo: la galaxia gira sola mientras nadie la toca. */
+  setAttract?(on: boolean): void;
+  /** Destello del atractor: enciende una palabra **sin apagar** el resto. */
+  spotlight?(id: number | null): void;
+  /** La órbita, para escribirla en un enlace, y de vuelta desde uno. */
+  cameraState?(): CamState;
+  setCameraState?(s: CamState): void;
 }
+
+/** Cuánto silencio hace falta para que la galaxia empiece a girar sola. Veinte
+ *  segundos son más de lo que dura una duda y menos de lo que dura un café: no
+ *  se dispara mientras se lee la ficha, y sí en cuanto la pestaña se abandona. */
+const IDLE_MS = 20000;
+
+/** Cada cuánto el atractor enciende otra palabra. Cinco segundos y medio dan
+ *  tiempo a leerla y a que la deriva enseñe el sitio desde otro ángulo. */
+const DRIFT_MS = 5500;
+
+/** Cuántos nodos se le pasan a la cámara para encuadrar un grupo. Es el
+ *  `PATH_MAX` del motor WebGPU, que lee las posiciones de la GPU y no puede
+ *  leer mil: recortar aquí, y no allí, es lo que hace que los dos motores
+ *  encuadren **lo mismo** — el respaldo WebGL no tiene ese tope y sin esto
+ *  enmarcaría un grupo más ancho que el otro con el mismo clic. */
+const FRAME_MAX = 64;
 
 /** Intervalo de sondeo al pasar el ratón. Cada consulta es un dispatch sobre
  *  50.000 nodos más el mapeo de un buffer, así que no puede ir por evento. */
@@ -121,6 +353,10 @@ export default function GalaxyView({ lang: initial = "es" }: { lang?: string }) 
   const hoverAt = useRef(0);
   const hoverBusy = useRef(false);
   const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
+  /** ¿Se ha leído ya el `?cmp=` de la URL? El efecto que la escribe corre en el
+   *  mismo commit que el que la lee, y con la lista todavía vacía: sin esta
+   *  bandera borraría el parámetro justo antes de que llegara a aplicarse. */
+  const urlRead = useRef(false);
 
   // El idioma vive en la URL: enlaces compartibles y navegación atrás/adelante.
   const [lang, setLang] = useState(() => {
@@ -150,6 +386,51 @@ export default function GalaxyView({ lang: initial = "es" }: { lang?: string }) 
   const [side, setSide] = useState(
     () => typeof window === "undefined" || window.innerWidth > 720,
   );
+  /** El comparador, con su propia lista de palabras. Vive aquí y no dentro del
+   *  panel porque la ficha también añade a ella («comparar esta palabra»), y
+   *  porque al cambiar de idioma hay que vaciarla: los índices de nodo de una
+   *  galaxia no significan nada en la otra. */
+  const [cmp, setCmp] = useState(false);
+  const [cmpIds, setCmpIds] = useState<number[]>([]);
+  /** ¿Hay un grupo del comparador resaltado en la galaxia? No es lo mismo que
+   *  tener palabras en la lista: la lista puede estar llena y la galaxia
+   *  intacta. Se guarda porque el resalte de grupo no pasa por `sel` ni por
+   *  `path`, así que sin esto nada sabría que queda algo que soltar. */
+  const [lit, setLit] = useState(false);
+  /** La presentación. Arranca abierta en la primera visita —y no sobre un
+   *  enlace que ya apunta a algo— y se reabre desde el botón `?`. Se decide en
+   *  el inicializador y no en un efecto: puesta después del primer pintado,
+   *  aparecería de golpe encima de una galaxia ya dibujada. */
+  const [intro, setIntro] = useState(introPending);
+  /** Los tres paneles nuevos del cajón. Independientes y no un acordeón: la
+   *  leyenda es lo que se deja abierto mientras se usa lo demás. */
+  const [zonesOn, setZonesOn] = useState(false);
+  const [patOn, setPatOn] = useState(false);
+  const [anaOn, setAnaOn] = useState(false);
+  /** Aviso de un instante: copiar el enlace no cambia nada en pantalla, así que
+   *  sin esto no hay forma de saber si funcionó. */
+  const [toast, setToast] = useState<string | null>(null);
+  /** ¿Se ha movido la cámara de su encuadre? Es lo que decide si el botón de
+   *  vista completa hace falta: un botón que siempre está es un botón que
+   *  siempre estorba, y uno que aparece justo cuando uno se ha perdido se lee
+   *  como la salida que es. */
+  const [roamed, setRoamed] = useState(false);
+  /** Modo inmersivo: pantalla completa del navegador **y** la interfaz fuera.
+   *  Son dos cosas y van juntas a propósito: quitar la barra del navegador y
+   *  dejar los paneles tapando un tercio del lienzo no es pantalla completa. */
+  const [zen, setZen] = useState(false);
+  /** Modo atractor: nadie toca nada desde hace rato. */
+  const [attract, setAttract] = useState(false);
+  /** La palabra que el atractor tiene encendida ahora mismo. */
+  const [drift, setDrift] = useState<number | null>(null);
+  /** El grupo encendido, para poder devolverlo a su sitio después de un resalte
+   *  de paso de la leyenda. `lit` dice que hay algo; esto dice qué. */
+  const groupRef = useRef<number[] | null>(null);
+  /** Cuántas palabras tiene ese grupo. La píldora lo dice, y ya no puede sacar
+   *  el número de la lista del comparador: ahora también encienden grupos la
+   *  leyenda y las familias, y entonces contaba palabras que no eran ésas
+   *  —«0 palabras resaltadas» con quinientas encendidas—. */
+  const [litN, setLitN] = useState(0);
   const t = COPY[lang as keyof typeof COPY] ?? COPY.es;
   // El color de las aristas dice a qué zona pertenece cada palabra; la ficha
   // repite ese mismo color para que la relación sea legible sin adivinarla.
@@ -159,6 +440,12 @@ export default function GalaxyView({ lang: initial = "es" }: { lang?: string }) 
   const index = useMemo(() => (g ? buildIndex(g) : null), [g]);
   // Fuera del `map`: recalcularlo por fila recorre el CSR del nodo otra vez.
   const road = useMemo(() => (g && path ? hops(g, path) : null), [g, path]);
+  /** El lector de `vecs.bin`. Uno por galaxia: guarda una caché de vectores ya
+   *  normalizados y los índices de nodo no sobreviven al cambio de idioma. */
+  const vec = useMemo(
+    () => (g ? new Vectors(`/data/${lang}`, g.meta.dims ?? 300, g.meta.nodes) : null),
+    [g, lang],
+  );
 
   const switchTo = useCallback((id: string) => {
     setLang(id);
@@ -180,7 +467,7 @@ export default function GalaxyView({ lang: initial = "es" }: { lang?: string }) 
   useEffect(() => {
     let dead = false;
     setG(null); setSel(null); setPath(null);
-    setHover(null); setError(null);
+    setHover(null); setError(null); setCmpIds([]);
     loadGalaxy(`/data/${lang}`)
       .then(gal => { if (!dead) setG(gal); })
       .catch(e => { if (!dead) setError(String(e)); });
@@ -241,6 +528,10 @@ export default function GalaxyView({ lang: initial = "es" }: { lang?: string }) 
     const v = viewerRef.current;
     setSel(a);
     setError(null);
+    // Tanto `select` como `selectPath` reescriben el canal de resalte entero,
+    // así que a partir de aquí el grupo del comparador ya no está encendido.
+    setLit(false);
+    groupRef.current = null;
 
     let p: number[] | null = null;
     if (g && a !== null && b !== null) p = shortestPath(g, a, b);
@@ -284,12 +575,43 @@ export default function GalaxyView({ lang: initial = "es" }: { lang?: string }) 
   const applyUrl = useCallback(() => {
     if (!g || !index) return;
     const q = new URLSearchParams(location.search);
+
+    // La comparación primero: es independiente de la palabra abierta, y el
+    // panel tiene que estar puesto antes de que la ficha vuele la cámara.
+    //
+    // Si el enlace trae las dos cosas (`?w=` y `?cmp=`), manda el grupo: el
+    // comparador enciende su selección al montarse, y es la más específica de
+    // las dos —una lista que alguien compuso a mano frente a una palabra
+    // suelta—. La ficha sigue abierta con su palabra, sólo que el resalte de la
+    // galaxia es el del grupo.
+    const list = (q.get("cmp") ?? "")
+      .split(",")
+      .map(x => x.trim())
+      .filter(Boolean)
+      .map(x => resolve(index, g, x))
+      .filter(i => i >= 0)
+      .slice(0, MAX_WORDS);
+    // Sin `Set` la misma palabra escrita dos veces en el enlace daría dos
+    // chips con la misma clave de React.
+    const uniq = [...new Set(list)];
+    setCmpIds(uniq);
+    if (uniq.length) setCmp(true);
+    urlRead.current = true;
+
+    // El encuadre compartido. Se lee antes de abrir nada porque decide si la
+    // ficha puede volar: un enlace que trae cámara dice **desde dónde** hay que
+    // mirar, y el vuelo automático de la selección lo pisaría al aterrizar.
+    const cam = decodeCam(q.get("cam"));
+
     const w = q.get("w");
     const a = w ? resolve(index, g, w) : -1;
-    if (a < 0) { show(null, null, { push: false }); return; }
     const to = q.get("to");
-    const b = to ? resolve(index, g, to) : -1;
-    show(a, b < 0 ? null : b, { push: false });
+    const b = a >= 0 && to ? resolve(index, g, to) : -1;
+    show(a < 0 ? null : a, b < 0 ? null : b, { push: false, fly: !cam });
+    if (cam) {
+      viewerRef.current?.setCameraState?.(cam);
+      setRoamed(true);
+    }
   }, [g, index, show]);
 
   // Al arrancar. Va *después* del efecto que construye el motor, así que
@@ -311,6 +633,28 @@ export default function GalaxyView({ lang: initial = "es" }: { lang?: string }) 
     addEventListener("popstate", back);
     return () => removeEventListener("popstate", back);
   }, [applyUrl, lang]);
+
+  /** El aviso se borra solo. Un mensaje que se queda es un mensaje que hay que
+   *  cerrar, y esto no merece un botón. */
+  useEffect(() => {
+    if (!toast) return;
+    const id = setTimeout(() => setToast(null), 2400);
+    return () => clearTimeout(id);
+  }, [toast]);
+
+  /** Quién ha movido la cámara. El teclado de vuelo vive dentro de cada motor
+   *  (`KeyFly`), así que aquí sólo se escucha para saber que ha pasado — no
+   *  para mover nada. `Inicio` hace lo contrario: devuelve el encuadre, así que
+   *  apaga el aviso igual que el botón. */
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (typing(e.target) || e.ctrlKey || e.metaKey) return;
+      if (e.key === "Home") { setRoamed(false); return; }
+      if (/^(Arrow|[wasdqeWASDQE]$|\+|-|Page)/.test(e.key)) setRoamed(true);
+    };
+    addEventListener("keydown", key);
+    return () => removeEventListener("keydown", key);
+  }, []);
 
   const onMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const v = viewerRef.current;
@@ -349,7 +693,20 @@ export default function GalaxyView({ lang: initial = "es" }: { lang?: string }) 
     const v = viewerRef.current;
     if (!v) return;
     const r = e.currentTarget.getBoundingClientRect();
-    choose(await v.pick(e.clientX - r.left, e.clientY - r.top));
+    const id = await v.pick(e.clientX - r.left, e.clientY - r.top);
+    // El clic en el vacío es **una salida más** —`hintOut` lo promete—, así que
+    // pasa por `clear()` y no por `choose(null)`: éste apaga el resalte pero
+    // deja el eje clavado donde lo dejó `focus`, y la galaxia se queda girando
+    // alrededor de la última palabra. Es el mismo estado a medias que arreglaba
+    // `Esc`, y la regla es que todas las salidas hagan lo mismo.
+    //
+    // Con las manos vacías el clic no hace nada: mover la cámara sola al pinchar
+    // en el hueco sería un gesto que nadie ha pedido.
+    if (id === null) {
+      if (sel !== null || path || lit) clear();
+      return;
+    }
+    choose(id);
   };
 
   const applyParams = useCallback((patch: Partial<Params>) => {
@@ -370,12 +727,265 @@ export default function GalaxyView({ lang: initial = "es" }: { lang?: string }) 
     applyParams({ ...DEFAULTS });
   }, [applyParams]);
 
-  const goHome = useCallback(() => viewerRef.current?.goHome?.(), []);
+  const goHome = useCallback(() => {
+    viewerRef.current?.goHome?.();
+    setRoamed(false);
+  }, []);
+
+  /** El enlace a lo que hay ahora en pantalla, **con el encuadre dentro**.
+   *
+   *  La palabra ya viajaba (`?w=`), pero no el sitio desde el que se la mira, y
+   *  en una nube de 50.000 puntos el encuadre es la mitad del mensaje: «mira
+   *  este puente entre dos barrios» no es una palabra, es una vista. Se escribe
+   *  además en la barra de direcciones, para que el enlace sea el que se ve.
+   */
+  const shareView = useCallback(async () => {
+    const u = new URL(location.href);
+    const cam = viewerRef.current?.cameraState?.();
+    if (cam) u.searchParams.set("cam", encodeCam(cam));
+    history.replaceState(null, "", u);
+    try {
+      await navigator.clipboard.writeText(u.href);
+      setToast(t.shareOk);
+    } catch {
+      // Sin HTTPS (o sin permiso) el portapapeles no existe. La URL ya está en
+      // la barra, así que la salida es copiarla de ahí y eso es lo que se dice.
+      setToast(t.shareNo);
+    }
+  }, [t]);
+
+  /** La comparación, en la URL. Es la misma idea que `?w=` y `?to=`: un enlace
+   *  que abre el atlas ya puesto en lo que se quiere enseñar. «Mira lo que se
+   *  parecen éstas cinco» no se puede decir de otra forma sin pedirle a quien
+   *  lee que las teclee una a una.
+   *
+   *  Va por `replaceState` y no por `pushState`: quitar y poner palabras es un
+   *  ajuste, no un salto, y cada tecleo dejaría una entrada de historial que
+   *  haría del botón «atrás» un deshacer letra a letra. */
+  useEffect(() => {
+    if (!g || !urlRead.current) return;
+    const u = new URL(location.href);
+    const val = cmpIds.map(i => g.labels[i]).join(",");
+    if (val) u.searchParams.set("cmp", val); else u.searchParams.delete("cmp");
+    if (u.href !== location.href) history.replaceState(null, "", u);
+  }, [g, cmpIds]);
+
+  /** Soltar lo que se esté mirando: la palabra, el camino o el grupo. Es un
+   *  solo gesto para las tres cosas porque desde fuera son la misma —«quiero la
+   *  galaxia entera otra vez»— y tener que adivinar cuál está activa para saber
+   *  qué botón vale es justo lo que hacía que nadie encontrase la salida.
+   *
+   *  Y soltar **deshace también el vuelo**, no sólo el resalte: enfocar deja el
+   *  centro de la órbita clavado en la palabra, así que al apagar el resalte la
+   *  galaxia seguía girando alrededor de un punto cualquiera de un brazo. Eso
+   *  no se lee como «he vuelto atrás», se lee como que el atlas se ha torcido.
+   *  Es el mismo `goHome()` del botón de vista completa: el eje vuelve al
+   *  centro que fijó `frame()`. */
+  /** Entrar y salir del modo inmersivo.
+   *
+   *  El estado es nuestro y la pantalla completa del navegador es un extra que
+   *  puede fallar: hay navegadores y contextos (un iframe sin `allowfullscreen`,
+   *  un permiso denegado) donde `requestFullscreen` rechaza. Si se atara el modo
+   *  a que la API funcione, el botón no haría nada en esos sitios; así, como
+   *  mínimo, la interfaz se aparta y queda la galaxia. */
+  const toggleZen = useCallback(() => {
+    const on = !zen;
+    setZen(on);
+    try {
+      if (on && !document.fullscreenElement) {
+        void document.documentElement.requestFullscreen?.().catch(() => {});
+      } else if (!on && document.fullscreenElement) {
+        void document.exitFullscreen?.().catch(() => {});
+      }
+    } catch { /* sin pantalla completa nos quedamos con el modo, que es lo gordo */ }
+  }, [zen]);
+
+  /** Salir de la pantalla completa por fuera —`Esc`, `F11`, el gesto del
+   *  sistema— tiene que apagar también el modo, o la interfaz se quedaría
+   *  escondida dentro de una ventana normal y sin nada que la explique. */
+  useEffect(() => {
+    const sync = () => { if (!document.fullscreenElement) setZen(false); };
+    document.addEventListener("fullscreenchange", sync);
+    return () => document.removeEventListener("fullscreenchange", sync);
+  }, []);
+
+  /** `F` lo enciende y lo apaga. Va aquí y no en `KeyFly` por lo mismo que
+   *  `Escape`: no es una tecla de cámara, y `KeyFly` hay una por motor. */
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== "f" && e.key !== "F") return;
+      if (e.ctrlKey || e.metaKey || e.altKey || typing(e.target)) return;
+      e.preventDefault();
+      toggleZen();
+    };
+    addEventListener("keydown", key);
+    return () => removeEventListener("keydown", key);
+  }, [toggleZen]);
+
+  const clear = useCallback(() => {
+    if (lit) { viewerRef.current?.select(null); setLit(false); }
+    groupRef.current = null;
+    show(null, null);
+    goHome();
+  }, [lit, show, goHome]);
+
+  /** `Escape` suelta la selección.
+   *
+   *  Va aquí y no en `KeyFly` a propósito: `KeyFly` se instancia **una vez por
+   *  motor** —`gpu/camera.ts` y `scene.ts` tienen la suya— y esto no es una
+   *  tecla de cámara sino de selección, que vive en este componente. Colgarla
+   *  de uno de los dos la habría dejado muerta en el otro, que es el camino que
+   *  se ve al abrir el navegador en Linux sin la bandera de WebGPU.
+   *
+   *  El filtro de foco es el mismo que usa el teclado de vuelo: dentro del
+   *  buscador, `Escape` cierra el desplegable y no toca la galaxia. */
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.ctrlKey || e.metaKey || typing(e.target)) return;
+      // El modo inmersivo sale primero: es la capa de encima, y quien pulsa
+      // `Esc` con la interfaz escondida quiere la interfaz, no soltar la
+      // palabra. (Con pantalla completa de verdad, el navegador se come esta
+      // tecla y `fullscreenchange` hace el resto — esta rama es para cuando la
+      // pantalla completa no llegó a concederse.)
+      if (zen) { e.preventDefault(); toggleZen(); return; }
+      if (sel === null && !path && !lit) return;
+      e.preventDefault();
+      clear();
+    };
+    addEventListener("keydown", key);
+    return () => removeEventListener("keydown", key);
+  }, [sel, path, lit, clear, zen, toggleZen]);
+
+  /** Las palabras que el atractor y el dado pueden sacar: frecuentes y sin
+   *  vacías. Una sola pasada por los 50.000 al cargar la galaxia. */
+  const pool = useMemo(() => (g ? common(g) : []), [g]);
+
+  /** ¿Puede la galaxia ponerse a girar sola? Sólo con las manos vacías: con una
+   *  palabra abierta, un camino o la presentación delante, moverle la cámara a
+   *  alguien es quitarle de la vista justo lo que estaba mirando. */
+  const canAttract = sel === null && !path && !lit && !intro;
+
+  /** El reloj del reposo. Cualquier gesto —ratón, rueda o tecla— lo pone a cero
+   *  y apaga la deriva; veinte segundos de silencio la encienden.
+   *
+   *  El rearme va limitado (`400 ms`): el ratón dispara sesenta eventos por
+   *  segundo y sesenta `setTimeout` por segundo no hacen falta para saber que
+   *  alguien está ahí. */
+  useEffect(() => {
+    if (!g || !canAttract) { setAttract(false); return; }
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let last = 0;
+    const arm = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => setAttract(true), IDLE_MS);
+    };
+    const wake = () => {
+      setAttract(false);
+      const now = performance.now();
+      if (now - last < 400) return;
+      last = now;
+      arm();
+    };
+    const opts = { passive: true } as const;
+    addEventListener("pointerdown", wake, opts);
+    addEventListener("pointermove", wake, opts);
+    addEventListener("wheel", wake, opts);
+    addEventListener("keydown", wake);
+    arm();
+    return () => {
+      if (timer) clearTimeout(timer);
+      removeEventListener("pointerdown", wake);
+      removeEventListener("pointermove", wake);
+      removeEventListener("wheel", wake);
+      removeEventListener("keydown", wake);
+    };
+  }, [g, canAttract]);
+
+  /** El atractor en sí: la galaxia deriva y se va encendiendo una palabra tras
+   *  otra.
+   *
+   *  Las dos mitades hacen falta. Sólo la deriva es un salvapantallas —bonito y
+   *  mudo—; sólo los destellos, con la cámara clavada, no enseñan la nube. Y no
+   *  pasa por `show`: no hay ficha, no hay URL y no hay vuelo, porque esto no
+   *  es una selección — es el atlas pasando páginas mientras nadie mira. Por
+   *  eso también se suelta solo, sin `Esc` y sin botón.
+   *
+   *  El visor se relee del ref al limpiar: si lo que apagó la deriva fue un
+   *  cambio de idioma, el motor de la galaxia anterior ya está destruido y
+   *  escribirle un buffer es un error en consola. */
+  useEffect(() => {
+    const v = viewerRef.current;
+    if (!v || !g || !pool.length) return;
+    v.setAttract?.(attract);
+    if (!attract) { setDrift(null); return; }
+    const flash = () => {
+      const id = pool[(Math.random() * pool.length) | 0];
+      setDrift(id);
+      // `spotlight` y no `selectPath`: el reparto normal atenúa las otras
+      // 49.999 a 0,08 y deja la pantalla casi negra — que es justo lo que un
+      // atractor no puede hacer, porque la nebulosa *es* el cartel.
+      viewerRef.current?.spotlight?.(id);
+    };
+    flash();
+    const id = setInterval(flash, DRIFT_MS);
+    return () => {
+      clearInterval(id);
+      viewerRef.current?.setAttract?.(false);
+      viewerRef.current?.select(null);
+      setDrift(null);
+    };
+  }, [attract, g, pool]);
+
+  /** El grupo del comparador, resaltado en la galaxia. No pasa por `show`
+   *  porque no es una selección ni un camino entre dos: es la unión de varios,
+   *  y la URL no sabría decirla en un `?w=` y un `?to=`. */
+  const showGroup = useCallback((nodes: number[], frame?: number[]) => {
+    if (!nodes.length) return;
+    setSel(null);
+    setPath(null);
+    const v = viewerRef.current;
+    v?.selectPath(nodes);
+    // El resalte va sobre el grupo entero; el encuadre, sobre una muestra. Una
+    // región tiene miembros sueltos lejísimos y enmarcar sobre el más lejano
+    // deja el barrio como un punto en el centro — la misma razón por la que el
+    // encuadre inicial usa el percentil 95 y no la esfera envolvente.
+    void v?.focusPath?.((frame ?? nodes).slice(0, FRAME_MAX));
+    groupRef.current = nodes;
+    setLitN(nodes.length);
+    setLit(true);
+    setRoamed(true);
+  }, []);
+
+  /** Resalte de paso de la leyenda: enciende una región **sin mover la cámara**
+   *  y devuelve las cosas a su sitio al salir.
+   *
+   *  No pasa por `show` porque no cambia lo que se está mirando: es una lupa
+   *  sobre el mapa, no una selección. Y restaurar no es «apagar»: si había un
+   *  grupo, un camino o una palabra, vuelve eso — apagar sin más convertiría
+   *  pasar el ratón por la leyenda en una forma de perder la selección. */
+  const previewGroup = useCallback((nodes: number[] | null) => {
+    const v = viewerRef.current;
+    if (!v) return;
+    if (nodes) { v.selectPath(nodes); return; }
+    if (groupRef.current) v.selectPath(groupRef.current);
+    else if (path) v.selectPath(path);
+    else v.select(sel);
+  }, [path, sel]);
+
+  /** Añadir a la comparación desde la ficha. Abre el cajón además del panel:
+   *  añadir una palabra a una lista que no se ve no parece que haya hecho nada. */
+  const addToCompare = useCallback((id: number) => {
+    setCmpIds(prev =>
+      prev.includes(id) || prev.length >= MAX_WORDS ? prev : [...prev, id]);
+    setCmp(true);
+    setSide(true);
+  }, []);
 
   const fmt = (n: number) => n.toLocaleString(lang === "en" ? "en" : "es");
 
   return (
-    <div className={"galaxy-root" + (side ? " side-open" : "")}>
+    <div className={"galaxy-root" + (side ? " side-open" : "") + (cmp ? " cmp-open" : "") +
+                    (zen ? " zen" : "")}>
       <canvas
         ref={canvasRef}
         className={"galaxy-canvas" + (hover ? " over" : "")}
@@ -397,11 +1007,69 @@ export default function GalaxyView({ lang: initial = "es" }: { lang?: string }) 
           estática que el compositor ya iba a mezclar de todos modos. */}
       <div className="veil" aria-hidden="true" />
 
+      {/* La salida, donde se está mirando.
+          Antes la única forma visible de soltar era un «×» de 11 px en la
+          esquina de un panel del raíl derecho — y con un grupo del comparador
+          resaltado no había ficha, así que no había ningún botón en absoluto.
+          Esta píldora dice **qué** se tiene cogido y **cómo** soltarlo, en el
+          borde superior, que es la única banda del lienzo que no usa nada. */}
+      {g && (sel !== null || lit) && (
+        <div className="held">
+          <span className="held-w">
+            {path && path.length > 1
+              ? t.heldPath(g.labels[path[0]], g.labels[path[path.length - 1]])
+              : sel !== null
+                ? t.held(g.labels[sel])
+                : t.heldGroup(litN)}
+          </span>
+          <button onClick={clear}>{t.drop} <kbd>{t.esc}</kbd></button>
+        </div>
+      )}
+
       {hover && g && (
         <span className="tip" style={{ left: hover.x, top: hover.y }}>
           {g.labels[hover.id]}
         </span>
       )}
+
+      {/* La vuelta al encuadre completo, con el nombre escrito.
+          El icono de la barra existe desde siempre y aun así perderse era el
+          estado más fácil de alcanzar del atlas: un icono de 15 px en una tira
+          de cinco no se lee como «volver». Esta píldora **sólo aparece cuando
+          hace falta** —cuando la cámara ya no está en su sitio o hay algo
+          cogido— y por eso se puede permitir ser grande y decir la palabra. */}
+      {g && (roamed || sel !== null || lit || path) && (
+        <button className="go-home" onClick={goHome}>
+          <IcoFit />
+          <span>{t.whole}</span>
+          <kbd>{t.homeKey}</kbd>
+        </button>
+      )}
+
+      {/* El atlas en reposo, pasando páginas. El pie dice cómo recuperarlo,
+          aunque cualquier gesto ya lo hace: es un cartel, no un mando — de ahí
+          `pointer-events: none`, que además deja orbitar por encima de él. */}
+      {attract && g && (
+        <div className="drift" aria-live="off">
+          <span className="drift-w">{drift === null ? "" : g.labels[drift]}</span>
+          <span className="drift-n">{t.idle} · {t.idleOut}</span>
+        </div>
+      )}
+
+      {/* La salida del modo inmersivo. Con la tira de herramientas escondida es
+          el **único** mando a la vista, así que no puede esconderse ni esperar
+          a que alguien mueva el ratón: se queda arriba a la derecha, tenue, y
+          dice además las dos teclas. Un modo del que no se ve cómo salir es la
+          forma más rápida de que alguien cierre la pestaña. */}
+      {zen && (
+        <button className="zen-exit" onClick={toggleZen} title={t.zenNote}>
+          <IcoShrink />
+          <span>{t.zenOut}</span>
+          <kbd>esc</kbd>
+        </button>
+      )}
+
+      {toast && <p className="toast" role="status">{toast}</p>}
 
       {/* Cajón izquierdo. La pestaña vive *fuera* del cuerpo, en la misma fila
           flex: al plegar se desplaza todo el bloque justo el ancho del cuerpo,
@@ -414,7 +1082,7 @@ export default function GalaxyView({ lang: initial = "es" }: { lang?: string }) 
             desplegar no necesita ser un trasto aparte. */}
         <div className="tools" role="toolbar" aria-label={t.tools}>
           <button
-            className="tool"
+            className="tool tool-side"
             onClick={() => setSide(o => !o)}
             aria-expanded={side}
             aria-label={side ? t.close : t.open}
@@ -440,8 +1108,51 @@ export default function GalaxyView({ lang: initial = "es" }: { lang?: string }) 
           >
             <IcoFly />
           </button>
-          <button className="tool" onClick={goHome} aria-label={t.whole} title={t.whole}>
+          {/* Vista completa, en blanco pleno como la flecha del cajón y no al 42%
+              como los modos: no anuncia un estado, es la salida de emergencia
+              del encuadre, y la salida se tiene que ver. Su forma grande está
+              en la píldora del lienzo, que aparece en cuanto uno se aleja. */}
+          <button
+            className="tool tool-home"
+            onClick={goHome}
+            aria-label={t.whole}
+            title={`${t.whole} · ${t.homeKey}`}
+          >
             <IcoFit />
+          </button>
+          {/* Pantalla completa. Última de la tira, que es donde la busca todo el
+              mundo, y con estado (`aria-pressed`) porque es un modo. */}
+          <button
+            className={"tool" + (zen ? " on" : "")}
+            onClick={toggleZen}
+            aria-pressed={zen}
+            aria-label={t.zen}
+            title={`${t.zen} · F`}
+          >
+            {zen ? <IcoShrink /> : <IcoExpand />}
+          </button>
+          {/* Compartir la vista. Va con los mandos de cámara y no en el cuerpo
+              del cajón porque lo que copia **es** la cámara: la palabra ya
+              viajaba sin él. */}
+          <button
+            className="tool"
+            onClick={shareView}
+            aria-label={t.share}
+            title={t.share}
+          >
+            <IcoShare />
+          </button>
+          {/* La presentación, siempre a mano. Va la última de la tira y no
+              dentro del cuerpo del cajón porque el cuerpo se pliega: una
+              explicación que desaparece al plegar el panel es una explicación
+              que no se encuentra justo cuando hace falta. */}
+          <button
+            className="tool"
+            onClick={() => setIntro(true)}
+            aria-label={t.guide}
+            title={t.guide}
+          >
+            <IcoHelp />
           </button>
         </div>
 
@@ -468,6 +1179,79 @@ export default function GalaxyView({ lang: initial = "es" }: { lang?: string }) 
               onMiss={q => setError(t.missing(q, g.meta.nodes))}
             />
           )}
+          {/* La entrada al comparador, pegada al buscador.
+              Estaba arriba, en la tira de iconos de navegación —órbita, vuelo,
+              vista completa—, que son mandos de cámara: un icono de comparar
+              entre ellos no se leía como «escribir palabras». Aquí cuelga del
+              sitio donde ya se está escribiendo, que es de donde nace el
+              gesto. */}
+          {g && (
+            <button
+              className={"cmp-tab" + (cmp ? " on" : "")}
+              onClick={() => setCmp(o => !o)}
+              aria-expanded={cmp}
+            >
+              <IcoCompare />
+              <span className="cmp-tab-w">{t.compare}</span>
+              {cmpIds.length > 0 && (
+                <span className="cmp-n">{cmpIds.length}/{MAX_WORDS}</span>
+              )}
+              <span className="cmp-caret"><IcoChevron open={!cmp} /></span>
+            </button>
+          )}
+          {cmp && g && index && vec && zones && (
+            <Compare
+              g={g}
+              index={index}
+              vec={vec}
+              zoneCss={zones.css}
+              t={t.cmp}
+              ids={cmpIds}
+              onIds={setCmpIds}
+              onWord={id => choose(id)}
+              onPair={(a, b) => show(a, b)}
+              onGroup={showGroup}
+            />
+          )}
+          {/* La leyenda del color, las familias y las analogías. Van bajo el
+              buscador y en este orden: la primera explica lo que ya se está
+              viendo, la segunda enseña a preguntar por un grupo, y la tercera
+              es la única que cuesta una descarga. */}
+          {g && zones && (
+            <Legend
+              g={g}
+              zoneCss={zones.css}
+              t={t.zones}
+              open={zonesOn}
+              onOpen={setZonesOn}
+              onPick={(members, frame) => showGroup(members, frame)}
+              onPreview={previewGroup}
+            />
+          )}
+          {g && index && zones && (
+            <Pattern
+              g={g}
+              index={index}
+              zoneCss={zones.css}
+              t={t.pat}
+              open={patOn}
+              onOpen={setPatOn}
+              onMatch={ids => showGroup(ids)}
+              onClear={clear}
+            />
+          )}
+          {g && index && zones && vec && (
+            <Analogy
+              g={g}
+              index={index}
+              vec={vec}
+              zoneCss={zones.css}
+              t={t.ana}
+              open={anaOn}
+              onOpen={setAnaOn}
+              onWord={id => choose(id)}
+            />
+          )}
           {g && (
             <p className="stat">
               {fmt(g.meta.nodes)} {t.words} · {fmt(g.meta.edges)} {t.edges} ·{" "}
@@ -479,7 +1263,15 @@ export default function GalaxyView({ lang: initial = "es" }: { lang?: string }) 
               {gpu ? t.live : t.static}
             </p>
           )}
-          {g && <p className="stat hint">{t.hint}</p>}
+          {/* La pista cambia con el estado: mientras no hay nada cogido dice
+              cómo coger, y en cuanto lo hay dice cómo soltar. Es el sitio donde
+              ya se estaba mirando al aprender el gesto, así que la salida se
+              aprende en el mismo renglón que la entrada. */}
+          {g && (
+            <p className="stat hint">
+              {sel !== null || path || lit ? t.hintOut : t.hint}
+            </p>
+          )}
           {error && <p className="err">{error}</p>}
           {!g && !error && <p className="stat">{t.loading}</p>}
         </div>
@@ -497,6 +1289,21 @@ export default function GalaxyView({ lang: initial = "es" }: { lang?: string }) 
           />
         )}
         {g && <KeyHelp lang={lang} label={t.keys} mode={cameraMode} />}
+        {/* Con las manos vacías, el hueco de la ficha no se queda en blanco:
+            ofrece las tres formas de entrar. Sin esto la primera pantalla del
+            atlas —y, tras `Esc`, todas las demás— no proponía ningún gesto. */}
+        {g && index && zones && sel === null && !lit && (
+          <Start
+            g={g}
+            index={index}
+            pool={pool}
+            zoneCss={zones.css}
+            t={t.start}
+            onWord={id => choose(id)}
+            onPath={(a, b) => show(a, b)}
+            onGuide={() => setIntro(true)}
+          />
+        )}
         {sel !== null && g && (
           <aside className="card">
             <header className="card-head">
@@ -508,7 +1315,23 @@ export default function GalaxyView({ lang: initial = "es" }: { lang?: string }) 
                 {t.region} {g.community[sel]} · {t.freq} #{g.rank[sel] + 1}
                 {g.flags[sel] ? ` · ${t.stop}` : ""}
               </p>
-              <button className="card-x" onClick={() => choose(null)} aria-label="cerrar">×</button>
+              <span className="card-acts">
+                <button
+                  className="card-add"
+                  onClick={() => addToCompare(sel)}
+                  disabled={cmpIds.includes(sel) || cmpIds.length >= MAX_WORDS}
+                  aria-label={t.addTo}
+                  title={t.addTo}
+                >
+                  <IcoCompare />
+                </button>
+                {/* Cerrar con la palabra escrita y la tecla al lado. Antes era
+                    un «×» de 11 px sin etiqueta: la única salida visible del
+                    panel, y se confundía con un adorno del borde. */}
+                <button className="card-x" onClick={clear} aria-label={t.shut}>
+                  {t.shut} <kbd>{t.esc}</kbd>
+                </button>
+              </span>
             </header>
 
             <h2 className="card-title">{g.labels[sel]}</h2>
@@ -572,6 +1395,8 @@ export default function GalaxyView({ lang: initial = "es" }: { lang?: string }) 
           </aside>
         )}
       </div>
+
+      {intro && <Welcome lang={lang} onClose={() => setIntro(false)} />}
 
       {/* CC BY-SA 3.0 exige atribución: es el único requisito legal del proyecto */}
       <p className="attrib">

@@ -4,7 +4,7 @@
  *  Ojo con la convención: el NDC de WebGPU tiene z en [0,1] (como D3D), no en
  *  [-1,1] como OpenGL. La matriz de proyección es distinta a la de WebGL. */
 
-import { KeyFly, type FlyMode } from "../keys.mjs";
+import { KeyFly, type FlyMode, ZOOM_OUT } from "../keys.mjs";
 import { createJoystick } from "../joystick";
 
 export type Mat4 = Float32Array;
@@ -66,6 +66,24 @@ export function multiply(a: Mat4, b: Mat4): Mat4 {
  *  fallo. */
 const EPS = 0.035;
 
+/** Deriva del modo atractor, en radianes por frame. A 60 Hz son unos 95
+ *  segundos por vuelta: lo bastante lento para que no se lea como una animación
+ *  —la galaxia no está haciendo nada, está *quieta y viva*— y lo bastante para
+ *  que en dos segundos se note que el relieve cambia. Más rápido parece un
+ *  salvapantallas; más lento, una imagen fija. */
+const ATTRACT_YAW = 0.0011;
+
+/** El estado de la órbita, que es lo único que hace falta para reconstruir una
+ *  vista: centro, distancia y dos ángulos. Lo comparten los dos motores —cada
+ *  uno tiene su cámara pero las dos son la misma órbita— y es lo que viaja en
+ *  la URL al compartir un encuadre. */
+export interface CamState {
+  t: [number, number, number];
+  d: number;
+  th: number;
+  ph: number;
+}
+
 export class OrbitCamera {
   target: Vec3 = [0, 0, 0];
   distance = 10;
@@ -88,11 +106,16 @@ export class OrbitCamera {
   private fly = new KeyFly();
   /** Encuadre inicial, para volver a él con Inicio. */
   private home: Vec3 = [0, 0, 0];
+  /** Tope de alejamiento, en unidades de mundo. Lo fija `frame()` a partir del
+   *  encuadre completo; hasta entonces no hay galaxia que perder de vista. */
+  private maxDistance = Infinity;
   private homeDistance = 10;
   /** `orbit`: el centro de la órbita **no se mueve**, ni con teclas ni con el
    *  ratón. `fly`: cámara libre. Lo cambia `setMode`, que además avisa al
    *  teclado — si no, WASD seguiría trasladando en modo órbita. */
   private mode: FlyMode = 'orbit';
+  /** Modo atractor: la galaxia gira sola cuando nadie la toca. */
+  private attracting = false;
   private dragging = 0; // 0 nada, 1 rotar, 2 desplazar
   private joyActive = false;
   private joyStartX = 0;
@@ -107,6 +130,36 @@ export class OrbitCamera {
     this.fly.setMode(m);
     this.dragging = 0;
     this.joyActive = false;
+  }
+
+  /** Enciende o apaga la deriva. La decide la vista, que es quien sabe cuánto
+   *  hace que nadie toca nada. */
+  setAttract(on: boolean) { this.attracting = on; }
+
+  /** La órbita, para poder escribirla en un enlace. */
+  state(): CamState {
+    return {
+      t: [this.target[0], this.target[1], this.target[2]],
+      d: this.distance,
+      th: this.theta,
+      ph: this.phi,
+    };
+  }
+
+  /** Y de vuelta. Corta todo lo que hubiera en marcha —inercia, vuelo, teclas—
+   *  porque esto es «ponte exactamente aquí», no un destino más al que llegar
+   *  interpolando: viene de una URL y el encuadre es el mensaje.
+   *
+   *  El polar se recorta al mismo margen que el resto: un enlace escrito a mano
+   *  con `ph = 0` degenera el `lookAt` igual que llegar al polo con las teclas. */
+  setState(s: CamState) {
+    this.fly.stop();
+    this.flyTarget = null;
+    this.vTheta = this.vPhi = this.vDist = 0;
+    this.target = [s.t[0], s.t[1], s.t[2]];
+    this.distance = Math.min(s.d, this.maxDistance);
+    this.theta = s.th;
+    this.phi = Math.min(Math.PI - EPS, Math.max(EPS, s.ph));
   }
 
   eye(): Vec3 {
@@ -165,6 +218,9 @@ export class OrbitCamera {
   /** Traduce el vuelo del teclado a este sistema de coordenadas. Se llama una
    *  vez por frame: `read()` integra y amortigua por dentro. */
   private applyKeys() {
+    if (this.fly.active()) {
+      this.flyTarget = null;
+    }
     const k = this.fly.read();
     // Un vuelo en curso manda: tocar una tecla mientras la cámara viaja pelea
     // contra la interpolación y el destino no llega nunca.
@@ -184,7 +240,8 @@ export class OrbitCamera {
   }
 
   moving(): boolean {
-    return this.flyTarget !== null ||
+    return this.attracting ||
+      this.flyTarget !== null ||
       this.dragging !== 0 ||
       this.joyActive ||
       this.fly.active() ||
@@ -214,6 +271,13 @@ export class OrbitCamera {
       }
     }
     this.applyKeys();
+
+    // La deriva del atractor. Después de las teclas y antes de la inercia: así
+    // cualquier gesto la tapa sin tener que apagarla — mientras haya un vuelo,
+    // un arrastre o una tecla, la galaxia obedece y no se va sola.
+    if (this.attracting && !this.flyTarget && !this.dragging && !this.fly.active()) {
+      this.theta += ATTRACT_YAW;
+    }
 
     if (this.joyActive && this.mode === 'fly') {
       const dx = this.joyCurX - this.joyStartX;
@@ -252,6 +316,17 @@ export class OrbitCamera {
     this.vTheta *= 0.86;
     this.vPhi *= 0.86;
     this.vDist *= 0.82;
+
+    // El tope de alejamiento (`ZOOM_OUT`), al final del paso y no en cada sitio
+    // que toca `distance`: son tres —la rueda, el teclado y un vuelo en curso—
+    // y lo que importa es que ninguno pueda dejar el frame fuera de rango.
+    if (this.distance > this.maxDistance) {
+      this.distance = this.maxDistance;
+      // Y se corta la inercia contra el tope. Sin esto la velocidad acumulada
+      // sigue empujando hacia fuera y el primer empujón de vuelta se lo come
+      // ella: el zoom se siente pegado durante medio segundo.
+      if (this.vDist > 0) this.vDist = 0;
+    }
   }
 
   frame(radius: number) {
@@ -260,12 +335,14 @@ export class OrbitCamera {
     this.far = radius * 60;
     this.home = [this.target[0], this.target[1], this.target[2]];
     this.homeDistance = this.distance;
+    this.maxDistance = this.distance * ZOOM_OUT;
   }
 
   attach(el: HTMLElement) {
     const joy = createJoystick(el);
 
     const down = (e: PointerEvent) => {
+      this.flyTarget = null; // Interrumpir vuelo automático al hacer click o arrastrar
       // El arrastre secundario desplaza el centro, así que en órbita no existe:
       // todo arrastre gira. La galaxia se queda donde está.
       const pan = e.button === 2 || e.shiftKey;
@@ -282,6 +359,7 @@ export class OrbitCamera {
     };
     const move = (e: PointerEvent) => {
       if (!this.joyActive) return;
+      this.flyTarget = null; // Interrumpir vuelo automático al arrastrar
       const dx = e.clientX - this.joyCurX;
       const dy = e.clientY - this.joyCurY;
       this.joyCurX = e.clientX;
@@ -301,6 +379,7 @@ export class OrbitCamera {
     };
     const wheel = (e: WheelEvent) => {
       e.preventDefault();
+      this.flyTarget = null; // Interrumpir vuelo automático al hacer zoom
       this.vDist += Math.sign(e.deltaY) * 0.055;
     };
     const menu = (e: Event) => e.preventDefault();

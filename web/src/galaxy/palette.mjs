@@ -94,6 +94,27 @@ export function zoneColours(g) {
   return z;
 }
 
+/** El color de la rampa en `t` (cíclico), como `#rrggbb`.
+ *
+ *  No lo usa la galaxia —allí la posición en la rampa la decide el centroide de
+ *  cada región, no un número escrito a mano— sino la presentación, que necesita
+ *  enseñar la rampa entera antes de que haya galaxia cargada. Va aquí y no en
+ *  el componente por la misma razón que todo lo demás de este archivo: una
+ *  segunda copia de la rampa se queda desfasada en cuanto se toca la primera,
+ *  y entonces la explicación del color deja de describir el color.
+ *
+ *  El croma se ajusta a gama igual que en los nodos, así que la muestra sale
+ *  con el mismo neón y no con un pastel.
+ *  @type {(t: number) => string} */
+export function rampCss(t) {
+  const [L, h] = sampleRamp(t);
+  const rgb = new Float32Array(3);
+  oklch(L, fitChroma(L, MAX_C, h), h, rgb, 0);
+  return `#${[0, 1, 2]
+    .map(k => Math.round(255 * clamp(rgb[k], 0, 1)).toString(16).padStart(2, "0"))
+    .join("")}`;
+}
+
 /**
  * @param {import("./loader").Galaxy} g
  * @returns {Zones}

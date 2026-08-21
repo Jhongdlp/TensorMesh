@@ -43,6 +43,30 @@ export function tiers(g, id, out) {
   return out;
 }
 
+/** Escalones del **atractor**: una palabra se enciende y **nadie se apaga**.
+ *
+ *  Es la diferencia entre presentar la galaxia y taparla. Los otros dos
+ *  repartos atenúan las 49.999 restantes a `rest` (0,08) porque quien ha pedido
+ *  una palabra quiere ver *esa*; aquí no la ha pedido nadie —el atlas está
+ *  pasando páginas solo— y apagar la nebulosa para señalar un punto deja la
+ *  pantalla negra justo cuando lo único que hay que enseñar es la nebulosa.
+ *
+ *  Así que el fondo se queda en 1 y sólo sube la palabra y su vecindario: el
+ *  destello se lee sobre la malla encendida, que es el cartel.
+ *
+ * @param {import("./loader").Galaxy} g
+ * @param {number | null} id
+ * @param {Float32Array} out
+ */
+export function spotTiers(g, id, out) {
+  const { offsets, targets } = g;
+  out.fill(1);
+  if (id === null) return out;
+  for (let j = offsets[id]; j < offsets[id + 1]; j++) out[targets[j]] = HL.ring1;
+  out[id] = HL.self;
+  return out;
+}
+
 /** Lo mismo para un **camino** entre dos palabras.
  *
  *  Los nodos del camino van a `self` y sus vecinos directos a `ring2`. El

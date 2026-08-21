@@ -23,9 +23,14 @@ data/       Artefactos intermedios (_*.npy/_npz, ignorados por git) + binarios.
 web/        Astro + una isla React. Sólo lee los binarios ya publicados.
 ```
 
-`pipeline/all.sh` copia los cinco binarios de `data/<lang>/` a
+`pipeline/all.sh` copia los seis binarios de `data/<lang>/` a
 `web/public/data/<lang>/`. **La web nunca ejecuta el pipeline**: si cambias el
 formato de salida hay que republicar a mano o reejecutar `all.sh`.
+
+El sexto es `vecs.bin` (15 MB por idioma) y es el único que **no se descarga**:
+el comparador pide 300 bytes por palabra con `Range:`. Es también el que se
+olvida al publicar a mano — si falta, el comparador se apaga solo y el resto del
+atlas no se entera, que es a propósito.
 
 ## Comandos
 
@@ -35,6 +40,7 @@ formato de salida hay que republicar a mano o reejecutar `all.sh`.
 ./pipeline/all.sh es en                  # todo de punta a punta (~200 s por idioma)
 python3 pipeline/fetch.py    es 100000   # etapa 00, cachea data/raw/es.vec
 python3 pipeline/build.py    es 50000 1200   # etapas 01-07 (palabras, epochs)
+python3 pipeline/vectors.py  es          # etapa 08, vecs.bin para el comparador
 python3 pipeline/validate.py es          # vecinos conocidos, analogías, regiones
 python3 pipeline/preview.py  es          # PNG offline, sin navegador
 python3 pipeline/tune.py     es kr=0.006 epochs=1200   # sólo etapa 06 sobre _graph.npz
@@ -50,10 +56,11 @@ python3 pipeline/export_fixture.py es    # regenera data/fixture/ para los tests
 ```bash
 npm run dev            # astro dev
 npm run build          # astro build → dist/
-npm test               # check + physics + render
+npm test               # check + unit + physics + render
 npm run check          # tsc sobre src/galaxy/**/*.ts y src/components/**/*.tsx
 npm run test:physics   # node test/physics.mjs
 npm run test:render    # node test/render.mjs
+node test/unit.mjs es  # lógica pura, sin GPU, < 1 s
 ```
 
 Test individual con argumentos (los runners son scripts, no un framework):
@@ -101,6 +108,16 @@ trasladan. El pivote a la deriva era lo que hacía que el siguiente giro parecie
 torcido. El clamp del polo es `EPS = 0.035` rad en los dos motores, no `1e-4`:
 con la vista paralela al `up` fijo el `lookAt` degenera y la imagen daba un giro
 salvaje justo al llegar arriba o abajo.
+
+El **tope de alejamiento** (`ZOOM_OUT = 2.5` en `keys.mjs`, en múltiplos del
+encuadre completo) también vive en el módulo compartido y lo aplican los dos
+motores al final de su `update()`, no en cada sitio que toca `distance` — son
+tres (rueda, teclado y un vuelo en curso) y lo que importa es que ninguno pueda
+dejar el frame fuera de rango. Al chocar se pone `vDist` a cero: sin eso la
+inercia sigue empujando contra el tope y el primer empujón de vuelta se lo come
+ella, con lo que el zoom se siente pegado. Sin tope la galaxia encoge hasta un
+grumo de dos píxeles y la rueda parece haber dejado de funcionar; la salida
+(`Inicio`, el botón de vista completa) existe pero exige saber que existe.
 
 `KeyFly` sólo devuelve velocidades **normalizadas**
 (fracción de la distancia de órbita, radianes, fracción de zoom) ya amortiguadas;
@@ -200,6 +217,200 @@ Tres cosas que no son obvias y que se rompen solas si se tocan:
 - el hover escribe **4 bytes** en `dim`, no los 200 KB del buffer: se sondea cada
   90 ms.
 
+### El comparador y los vectores 300D
+
+La ficha de una palabra sale del grafo. El comparador **no puede**: la similitud
+entre dos palabras cualesquiera no está en `edges.bin`, que sólo guarda el peso
+de las aristas del kNN podado. «camello» e «inglaterra» no son vecinos de nadie
+en común, así que no hay número que leer. Y la regla es que toda afirmación se
+calcula en 300D. De ahí `vecs.bin`.
+
+Lo que hay que respetar si se toca:
+
+- el registro son **300 bytes contiguos y sin cabecera**. Eso es lo que permite
+  `Range: bytes=i*300-(i*300+299)`. Meter un `Float32` de escala por fila
+  desalinearía cada registro sin comprar nada;
+- **la escala no se publica**. El coseno es invariante a escala y
+  `vectors.ts:decode` renormaliza. La escala por vector es cosa del emisor;
+- es **int8 con escala por vector**, no global. Con escala global el error del
+  coseno sube unas cinco veces: la mediana de `max|x|` es 0,19 y el máximo 0,54,
+  así que unos pocos atípicos se llevarían todo el rango. `pipeline/vectors.py`
+  mide el error en la misma corrida que produce el archivo y avisa si asoma al
+  segundo decimal;
+- `dims` viaja en `meta.json` porque el cliente necesita el tamaño del registro
+  **antes** de pedir su primer rango;
+- `vectors.ts` tiene que aguantar dos respuestas que no son hipótesis: un `200`
+  con el archivo entero (servidor que ignora el rango → se cachea entero) y un
+  `404` (`available = false` → el comparador se apaga sin romper nada).
+
+`compare.mjs` es `.mjs` por lo mismo que `palette` y `path`: `test/unit.mjs` lo
+importa tal cual. El MDS es clásico (Torgerson) con Jacobi sobre una matriz de
+5×5 — exacto y sin iterar. **Los dos ejes comparten escala**: normalizarlos por
+separado llena el recuadro a costa de estirar una dirección más que la otra, y
+entonces las distancias del dibujo dejan de ser las de 300D, que es lo único que
+ese gráfico promete.
+
+La línea de referencia de las barras (`typical`) es la **mediana** de los pesos
+del CSR, no la media: la cola de pares casi idénticos arrastraría la media a un
+sitio donde casi nada la alcanza. Sin esa línea, un 0,35 no significa nada.
+
+El grupo se enciende **solo** al cambiar la lista, y el efecto depende de
+`roads` y no de `ids`: con `ids` encendería el grupo sin los caminos y volvería
+a encenderlo un instante después, dando dos vuelos de cámara por palabra.
+
+### La presentación
+
+`Welcome.tsx`: cuatro pantallas que dicen qué es un embedding, que las
+posiciones salen de unos muelles y no de una proyección, que el color es barrio,
+y qué se puede hacer. Sin ellas la galaxia es un salvapantallas: nada en la
+pantalla dice que cada punto sea una palabra.
+
+- **Sale una vez** (`localStorage`, `atlas.intro.v1`) y **no sale sobre un
+  enlace compartido**: si la URL trae `?w=` o `?cmp=`, alguien apuntó a algo
+  concreto y taparlo es contestar a una pregunta que nadie hizo.
+- **Se reabre** desde el botón `?` de la tira de herramientas, que sigue a la
+  vista con el cajón plegado. Dentro del cuerpo del cajón desaparecería al
+  plegarlo, justo cuando hace falta.
+- Se sale por `Esc`, por el velo y por el botón — la misma regla que la
+  selección. El `Escape` va **en captura**: el de `Galaxy.tsx` escucha en
+  `window` y soltaría la selección de debajo en vez de cerrar el cuadro.
+- El alto del cuadro tiene **suelo** (`min-height`) y el pie va con
+  `margin-top: auto`: las cuatro pantallas no miden lo mismo y con el cuadro
+  centrado el botón se movía bajo el dedo entre un «siguiente» y el siguiente.
+- Los colores de la tercera lámina salen de `rampCss` en `palette.mjs`, no de
+  una copia: una segunda rampa se queda desfasada en cuanto se toca la primera,
+  y entonces la explicación del color deja de describir el color.
+- El velo es translúcido y desenfocado, no negro: detrás se sigue viendo girar
+  lo que se está explicando, que es la mitad del argumento.
+
+### La primera pantalla: leyenda, familias, analogías y arranque
+
+Al abrir el atlas no había ni una lectura ni un gesto. El raíl derecho está
+vacío hasta el primer clic —los mandos de física sólo existen en WebGPU y la
+ficha no existe sin selección—, y el color, que es la mitad de lo que el dibujo
+dice, no se explicaba en ninguna parte. Cuatro piezas lo llenan, y todas siguen
+la misma regla: **aparecen sólo cuando dicen algo**.
+
+- **`Legend.tsx` + `regions.mjs` — la leyenda del mapa.** El nombre de una
+  región son sus tres palabras **más frecuentes y no vacías** (`flags`): con las
+  vacías dentro, media galaxia se titulaba «de · la · que». Pasar el ratón la
+  enciende **sin mover la cámara** (`previewGroup`), que es lo que convierte la
+  lista en mapa; clicar vuela, pero al **núcleo** (`core`, el 90% más cercano al
+  centroide), no a los miembros sueltos que el grafo dejó lejos — misma razón
+  que el percentil 95 del encuadre inicial. El resalte de paso lleva 110 ms de
+  retardo: cada uno reescribe el canal `dim` entero.
+- **`Pattern.tsx` + `pattern.mjs` — familias.** `*mente` enciende las 508 de
+  golpe y se ve que **no se apilan**: salpican todos los barrios, que es la
+  demostración de que aquí agrupa el significado y no la terminación. Busca
+  sobre la clave **plegada** del índice (`*cion` encuentra «-ción»), sin comodín
+  significa «contiene», y el patrón se escapa antes de compilar — la caja la
+  teclea cualquiera y un `(` suelto no puede lanzar. Hay tope (`MAX = 1000`):
+  resaltar 30.000 nodos es apagar 20.000.
+- **`Analogy.tsx` + `analogy.mjs` — `rey − hombre + mujer`.** Es la única
+  pregunta que **no** se contesta con filas sueltas: la respuesta es la más
+  parecida de las cincuenta mil a un punto que no ocupa ninguna palabra. Por eso
+  este panel —y sólo éste— llama a `Vectors.loadAll()` y baja `vecs.bin` entero
+  (15 MB) **al pulsar**, con barra de progreso: quince segundos de botón mudo se
+  leen como roto. El coseno se calcula contra los bytes int8 con la norma
+  inversa precalculada, sin desempaquetar 60 MB de `Float32Array`. Las tres
+  palabras de la pregunta se **excluyen** de la respuesta: sin eso, `rey −
+  hombre + mujer` contesta `rey`.
+- **`Start.tsx` — por dónde empezar.** Ocupa el hueco de la ficha mientras no
+  hay ficha: seis ejemplos, palabra al azar y camino sorpresa. El azar sale de
+  `common()` —rango de frecuencia < 4.000 y sin vacías—, no de las 50.000: caer
+  en `zzzz` la primera vez enseña que el atlas está lleno de basura. El camino
+  sorpresa **comprueba que hay camino** antes de ofrecerlo (el grafo podado deja
+  islas).
+
+### Reposo, encuadre y enlace
+
+- **Modo atractor.** Veinte segundos sin ratón ni teclas **y con las manos
+  vacías** (`canAttract`: sin selección, sin camino, sin grupo, sin
+  presentación) y la galaxia deriva sola (`ATTRACT_YAW`, una vuelta cada ~95 s)
+  encendiendo una palabra cada 5,5 s. Dos cosas que no son obvias: la deriva va
+  dentro de la cámara de cada motor y `moving()` la cuenta, o el **salto de
+  frame en reposo** se comería el movimiento; y el destello usa `spotTiers`,
+  que **no atenúa a nadie** — con el reparto normal (`rest = 0,08`) el atractor
+  apagaba la nebulosa justo cuando la nebulosa es el cartel.
+- **Vista completa visible.** El icono de 15 px de la tira existía desde
+  siempre y perderse seguía siendo el estado más fácil de alcanzar. Ahora hay
+  una píldora `.go-home` en el lienzo que **sólo sale cuando hace falta**:
+  cámara movida (`roamed`) o algo cogido. Por eso puede permitirse ser grande y
+  escribir la palabra.
+- **Compartir la vista** (`share.mjs`). La órbita entera en seis números
+  (`?cam=x,y,z,d,th,ph`), no la matriz de vista: es el estado que **los dos
+  motores comparten**, así que un enlace hecho en WebGPU abre igual en el
+  respaldo WebGL. `decodeCam` devuelve `null` ante cualquier cosa que no sean
+  seis números finitos con distancia positiva — la URL la escribe cualquiera y
+  una cámara a medio leer es una pantalla negra sin explicación. Al abrir un
+  enlace con cámara, la selección **no vuela** (`fly: false`): el encuadre del
+  enlace es el mensaje.
+
+### La salida tiene que verse tanto como la entrada
+
+Seleccionar es un clic en un punto; soltar era un «×» de 11 px en la esquina de
+un panel del raíl derecho — y con un grupo del comparador resaltado no había
+ficha, así que no había ningún botón. Hay cuatro salidas y las cuatro llaman a
+`clear()`: la píldora `.held` en el borde superior del lienzo (que dice **qué**
+se tiene cogido), el botón de la ficha con la palabra escrita, `Esc`, y el
+**clic en el vacío** —el que `hintOut` promete—. Este último es el que se cuela:
+el `pick` que no acierta a nadie devuelve `null` y `choose(null)` parecía
+bastar, pero `choose` no es la salida, es la entrada con el argumento vacío. Con
+las manos vacías el clic en el hueco no hace nada, porque mover la cámara sola
+al pinchar en el fondo es un gesto que nadie pidió.
+
+`clear()` **también deshace el vuelo**, con el mismo `goHome()` del botón de
+vista completa. Seleccionar clava el centro de la órbita en la palabra
+(`focus`), así que apagar sólo el resalte dejaba la galaxia girando alrededor de
+un punto cualquiera de un brazo: el atlas no parecía haber vuelto atrás, parecía
+haberse torcido. Soltar devuelve el eje al centro que fijó `frame()`.
+
+`Esc` vive en `Galaxy.tsx` y **no** en `KeyFly`: `KeyFly` se instancia una vez
+por motor (`gpu/camera.ts` y `scene.ts`), y colgarla de uno la dejaría muerta en
+el otro — el mismo error que ya documenta este archivo para el teclado. El
+filtro de foco sí se comparte: `typing()` se exporta desde `keys.mjs`, porque
+`Escape` dentro del buscador cierra el desplegable y sólo fuera suelta la
+selección.
+
+`.held` lleva `pointer-events: none` y sólo su botón los recupera: si no, la
+píldora le robaría al lienzo la franja de arriba para orbitar.
+
+`lit` es estado propio porque el resalte de grupo no pasa por `sel` ni por
+`path`; sin él nada sabría que queda algo que soltar. Y `show()` lo apaga,
+porque tanto `select` como `selectPath` reescriben el canal de resalte entero.
+
+### La tira de herramientas, plegada y a pantalla completa
+
+- **Modo inmersivo** (`.zen`, tecla `F`, botón de la tira). Pantalla completa
+  del navegador **y** la interfaz fuera: quitar la barra del navegador dejando
+  tres paneles que tapan un tercio del lienzo no es pantalla completa. El estado
+  es propio y `requestFullscreen` es un extra que puede fallar (iframe sin
+  permiso, navegador que lo niega) — atar el modo a la API dejaría el botón sin
+  hacer nada en esos sitios. `fullscreenchange` lo apaga cuando se sale por
+  fuera (`Esc`, `F11`), y `Esc` sale del modo **antes** que de la selección:
+  quien lo pulsa con la interfaz escondida quiere la interfaz.
+  Se esconde con `display: none` y no con `opacity`: un panel invisible que
+  sigue recibiendo el ratón se lleva los arrastres que iban al lienzo.
+  **La atribución no se esconde** — es el único requisito legal del proyecto y
+  un modo de pantalla no es una excusa; se aparta al borde y baja de tinta.
+  Y siempre queda un mando a la vista (`.zen-exit`, arriba a la derecha, con las
+  teclas escritas): un modo del que no se ve cómo salir se sale cerrando la
+  pestaña.
+- **Plegado, el cajón mide lo que miden sus botones.** Antes seguía siendo una
+  columna de borde a borde con la tira arriba y dos palmos de negro debajo, que
+  además le robaba al lienzo el borde izquierdo entero para orbitar. El truco
+  está en el cuerpo: escondido con `visibility` seguía **midiendo**, así que hay
+  que darle `height: 0` al plegarlo o el cajón no encoge.
+- **Los botones miden 2,15 rem** (34 px) y no 1,7 (27): son la única navegación
+  que queda a la vista con el cajón plegado, y 27 px están por debajo de lo que
+  se acierta sin apuntar. Con puntero grueso suben a 2,75 rem (44 px). El tamaño
+  del icono vive en `.tool svg`, no repartido por siete componentes.
+- **La flecha del cajón va en negativo** (fondo blanco, flecha negra, trazo 2).
+  Es el único mando que hay que encontrar *sobre la galaxia*, y un icono de
+  trazo fino en blanco desaparece en cuanto detrás pasa un brazo claro de la
+  nebulosa. Un bloque sólido no se pierde nunca. El trazo sube porque en oscuro
+  sobre claro la línea se lee más fina que al revés.
+
 ### Lo que *no* sirve aquí: occlusion culling
 
 Es la primera idea que trae cualquiera que venga de videojuegos, y en esta escena
@@ -276,6 +487,7 @@ Tres sitios describen los mismos bytes y **no hay tipo compartido entre ellos**:
 | Uniform de cull (96 B) | `engine.ts:writeCull` | `cull.wgsl:CullU`, `test/render.mjs` |
 | Bind group de cull (7 entradas) | `engine.ts:cullBGL` | `cull.wgsl`, `test/render.mjs:cullBGL` |
 | Uniform de pick (96 B) | `engine.ts:pick` | `pick.wgsl:PickU`, `test/render.mjs` |
+| `vecs.bin` (300 B/palabra) | `pipeline/vectors.py` | `galaxy/vectors.ts`, `test/unit.mjs` |
 
 `test/render.mjs` además **reimplementa** `perspective`/`lookAt`/`multiply` de
 `camera.ts` y el cálculo de centroide+p95. Si tocas cualquiera de esas cosas en
@@ -307,7 +519,25 @@ La matriz de proyección de `camera.ts` **no** es la de WebGL/Three.js.
   K; con el tile por workgroup el paso es **plano en K** (1,05 ms de K=8 a K=32
   frente a 1,38–3,15 ms antes). K ya no es un mando de rendimiento.
 - **Toda afirmación se calcula en 300D.** Vecinos y similitudes salen de los
-  vectores originales; el 3D existe sólo para los ojos.
+  vectores originales; el 3D existe sólo para los ojos. El comparador es el caso
+  que lo pone a prueba: la similitud entre dos palabras que no son vecinas no
+  está en ningún binario del grafo, así que hay que bajar sus vectores.
+- **La constelación del comparador no es la galaxia**, y el pie lo dice. Sale de
+  un MDS sobre las similitudes de las palabras elegidas y de nada más; dos
+  palabras pueden salir juntas ahí y lejos en el atlas sin que ninguna mienta.
+  Se muestra el estrés por eso mismo.
+- **Nunca hay un solo camino de vuelta.** Todo lo que se coge —una palabra, un
+  camino, un grupo— se suelta con `Esc`, con el botón de la píldora, con el de
+  la ficha y con un clic en el vacío, y las cuatro llaman al mismo `clear()`. Un estado del que sólo se sale
+  por un botón de 11 px es un estado del que no se sale. Y volver incluye la
+  cámara: `clear()` llama a `goHome()`, porque un eje que se queda clavado en la
+  última palabra es parte del estado del que no se salía.
+- **El atractor no apaga la galaxia.** Encender una palabra atenuando las otras
+  49.999 es correcto cuando alguien la ha pedido; en reposo, no la ha pedido
+  nadie y lo único que hay que enseñar es la nebulosa (`spotTiers`).
+- **`vecs.bin` entero sólo bajo demanda.** El comparador pide filas de 300
+  bytes; sólo la analogía baja los 15 MB, y sólo al pulsar. Quien no juega a
+  eso no paga la descarga.
 - **Nunca se muestra una distancia medida en la galaxia.** El número junto a cada
   vecino es similitud coseno en 300D, y el pie de la ficha lo dice explícitamente.
 - Las palabras vacías se **marcan** (`flags`), no se borran: son parte legítima

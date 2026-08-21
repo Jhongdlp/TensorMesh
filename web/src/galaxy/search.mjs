@@ -102,13 +102,14 @@ export function exact(idx, q) {
 
 /**
  * Hasta `k` nodos cuya palabra empieza por `q`, los más frecuentes primero.
+ * Sin fallback difuso.
  * @param {Index} idx
  * @param {import("./loader").Galaxy} g
  * @param {string} q  ya plegado
- * @param {number} [k]
+ * @param {number} k
  * @returns {number[]}
  */
-export function suggest(idx, g, q, k = SUGGEST) {
+function suggestPrefix(idx, g, q, k) {
   if (!q) return [];
   const out = /** @type {number[]} */ ([]);
   const { order, folded } = idx;
@@ -129,8 +130,145 @@ export function suggest(idx, g, q, k = SUGGEST) {
 }
 
 /**
+ * Distancia de Levenshtein entre dos cadenas con límite máximo y terminación temprana.
+ * @param {string} s1
+ * @param {string} s2
+ * @param {number} maxDist
+ * @returns {number}
+ */
+export function levenshteinDistance(s1, s2, maxDist = 3) {
+  if (s1.length < s2.length) {
+    const tmp = s1; s1 = s2; s2 = tmp;
+  }
+  let len1 = s1.length;
+  let len2 = s2.length;
+  if (len2 === 0) return len1;
+  if (len1 - len2 > maxDist) return 999;
+
+  let row = new Int32Array(len2 + 1);
+  for (let i = 0; i <= len2; i++) {
+    row[i] = i;
+  }
+
+  for (let i = 1; i <= len1; i++) {
+    let prev = i;
+    const char1 = s1.charCodeAt(i - 1);
+    let minRowVal = 999;
+    for (let j = 1; j <= len2; j++) {
+      let val;
+      if (char1 === s2.charCodeAt(j - 1)) {
+        val = row[j - 1];
+      } else {
+        val = Math.min(row[j - 1], Math.min(row[j], prev)) + 1;
+      }
+      row[j - 1] = prev;
+      prev = val;
+      if (val < minRowVal) minRowVal = val;
+    }
+    row[len2] = prev;
+    
+    if (minRowVal > maxDist) {
+      return 999;
+    }
+  }
+  return row[len2];
+}
+
+/**
+ * Busca palabras similares por heurística de sufijos o distancia de edición.
+ * @param {Index} idx
+ * @param {import("./loader").Galaxy} g
+ * @param {string} q  ya plegado
+ * @param {number} [k]
+ * @returns {number[]}
+ */
+export function suggestFuzzy(idx, g, q, k = SUGGEST) {
+  if (!q) return [];
+  const { order, folded } = idx;
+  const n = order.length;
+
+  // 1. Heurísticas rápidas para sufijos comunes (plurales en español e inglés, etc.)
+  const attempts = [];
+  if (q.length > 3) {
+    if (q.endsWith("ces")) {
+      attempts.push(q.slice(0, -3) + "z");
+    }
+    if (q.endsWith("es")) {
+      attempts.push(q.slice(0, -2));
+    }
+    if (q.endsWith("s")) {
+      attempts.push(q.slice(0, -1));
+    }
+  }
+
+  for (const alt of attempts) {
+    const p = lower(idx, alt);
+    if (p < order.length && folded[order[p]].startsWith(alt)) {
+      const altSuggestions = suggestPrefix(idx, g, alt, k);
+      if (altSuggestions.length > 0) return altSuggestions;
+    }
+  }
+
+  // 2. Distancia Levenshtein con poda por longitud y límite dinámico
+  const matches = [];
+  let maxLimit = 3;
+  
+  for (let id = 0; id < n; id++) {
+    const word = folded[id];
+    const lenDiff = Math.abs(q.length - word.length);
+    
+    if (lenDiff > maxLimit) {
+      continue;
+    }
+    
+    const dist = levenshteinDistance(q, word, maxLimit);
+    if (dist > maxLimit) continue;
+    
+    let insertPos = matches.length;
+    while (insertPos > 0) {
+      const prev = matches[insertPos - 1];
+      if (dist < prev.dist || (dist === prev.dist && g.rank[id] < prev.rank)) {
+        insertPos--;
+      } else {
+        break;
+      }
+    }
+    
+    if (insertPos < k) {
+      matches.splice(insertPos, 0, { id, dist, rank: g.rank[id] });
+      if (matches.length > k) {
+        matches.pop();
+      }
+      if (matches.length === k) {
+        maxLimit = matches[k - 1].dist;
+      }
+    }
+  }
+  
+  return matches.map(m => m.id);
+}
+
+/**
+ * Hasta `k` nodos cuya palabra empieza por `q` o es similar por distancia de
+ * edición si no hay coincidencias de prefijo.
+ * @param {Index} idx
+ * @param {import("./loader").Galaxy} g
+ * @param {string} q  ya plegado
+ * @param {number} [k]
+ * @returns {number[]}
+ */
+export function suggest(idx, g, q, k = SUGGEST) {
+  if (!q) return [];
+  const prefixHits = suggestPrefix(idx, g, q, k);
+  if (prefixHits.length > 0) {
+    return prefixHits;
+  }
+  return suggestFuzzy(idx, g, q, k);
+}
+
+/**
  * Lo que hace Enter en el buscador: el acierto exacto si lo hay y, si no, la
- * mejor sugerencia por prefijo. Escribir `corazon` cae en la primera vía;
+ * mejor sugerencia por prefijo o distancia. Escribir `corazon` cae en la primera vía;
  * escribir `nostalg` y pulsar Enter, en la segunda.
  * @param {Index} idx
  * @param {import("./loader").Galaxy} g

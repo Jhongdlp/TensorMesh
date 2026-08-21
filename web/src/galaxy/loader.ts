@@ -8,6 +8,9 @@ export interface Meta {
   csr: number;
   posScale: number;
   communities: number;
+  /** Tamaño del registro de `vecs.bin`. Opcional: una galaxia publicada antes
+   *  de que existiera el comparador no lo lleva, y entonces no hay vectores. */
+  dims?: number;
   stopwords: number;
   generated: string;
 }

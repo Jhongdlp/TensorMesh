@@ -78,7 +78,12 @@ import GalaxyView from "../components/Galaxy.tsx";
            dependen del mismo número: el ancho del cuerpo, cuánto se desplaza
            al plegarse y dónde tiene que quedar la atribución. */
         --side-w: min(14rem, 76vw);
-        --tool: 1.7rem;
+        /* Los botones de la tira. 1,7 rem son 27 px: por debajo del mínimo que
+           se acierta con el dedo sin mirar (~40 px) y pequeños hasta con ratón,
+           porque son la única navegación que queda a la vista con el cajón
+           plegado. A 2,15 rem son 34 px de caja con 17 px de icono dentro, y en
+           puntero grueso suben otra vez (ver el `@media` de abajo). */
+        --tool: 2.15rem;
         --side-pad: 0.55rem;
         /* Lo que queda a la vista plegado: la tira de herramientas y nada más. */
         --tab-w: calc(var(--tool) + var(--side-pad) * 2 + 2px);
@@ -199,7 +204,24 @@ import GalaxyView from "../components/Galaxy.tsx";
         z-index: 4;
         transition: width 0.24s cubic-bezier(0.4, 0, 0.2, 1);
       }
-      .galaxy-root:not(.side-open) .side { width: var(--tab-w); }
+      /* Plegado, el cajón mide **lo que miden sus botones**. Antes seguía siendo
+         una columna de borde a borde de la pantalla con la tira de iconos arriba
+         y dos palmos de negro debajo: un mueble de altura completa para seis
+         botones, y una franja muerta que además le robaba al lienzo el borde
+         izquierdo entero para orbitar. El tope evita que en una ventana muy baja
+         la tira se salga por abajo. */
+      .galaxy-root:not(.side-open) .side {
+        width: var(--tab-w);
+        bottom: auto;
+        max-height: 100%;
+      }
+      /* El cuerpo se pliega **sin ocupar sitio**: escondido con `visibility` se
+         quedaba invisible pero midiendo, y era él quien estiraba el cajón. */
+      .galaxy-root:not(.side-open) .side-body {
+        flex: 0 0 0;
+        height: 0;
+        margin: 0;
+      }
 
       /* La barra. `flex-wrap` es todo el mecanismo del plegado: a lo ancho del
          cajón los cuatro botones caben en fila; a lo ancho de la tira sólo cabe
@@ -223,9 +245,38 @@ import GalaxyView from "../components/Galaxy.tsx";
         cursor: pointer;
         padding: 0;
       }
+      /* La flecha que despliega el cajón, en blanco pleno y no al 42% como los
+         demás. No es un capricho de contraste: los otros tres botones de la
+         tira son **modos** —órbita, vuelo, encuadre— y su tinta apagada es lo
+         que significa «apagado», con `.on` reservado para el que manda. Éste no
+         tiene estado que anunciar: siempre hace lo mismo, y es además el único
+         de la tira que hay que encontrar con el cajón cerrado. */
+      /* Y va en **negativo** —fondo blanco, flecha negra— no sólo en blanco: es
+         el único mando que hay que encontrar sobre la galaxia con el cajón
+         plegado, y sobre una nebulosa de colores un icono de trazo fino al 100%
+         de blanco se pierde en cuanto detrás hay un brazo claro. Un bloque
+         sólido no se pierde nunca, tenga detrás lo que tenga.
+         El trazo sube a 2: en oscuro sobre claro la línea se ve más fina que al
+         revés, así que con 1,5 la flecha negra parecía más débil que las otras. */
+      .tool-side {
+        background: var(--ink);
+        border-color: var(--ink);
+        color: #000;
+      }
+      .tool-side:hover { background: #fff; border-color: #fff; color: #000; }
+      .tool-side svg { stroke-width: 2; }
       .tool:hover { background: rgba(255, 255, 255, 0.1); color: var(--ink); }
       .tool.on { background: var(--btn-on); color: var(--ink); }
       .tool:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+      /* El icono manda sobre el atributo del SVG: así el tamaño vive con la
+         medida del botón y no repartido por siete componentes. */
+      .tool svg { width: 1.05rem; height: 1.05rem; }
+      /* Dedo en vez de ratón: la caja crece a 44 px, que es el mínimo con el
+         que se acierta sin apuntar. */
+      @media (pointer: coarse) {
+        :root { --tool: 2.75rem; }
+        .tool svg { width: 1.25rem; height: 1.25rem; }
+      }
 
       .side-body {
         flex: 1;
@@ -540,23 +591,393 @@ import GalaxyView from "../components/Galaxy.tsx";
         color: #fff;
         overflow-wrap: anywhere;
       }
+      /* Cerrar, con la palabra escrita. Era un «×» redondo de 1,65 rem sin
+         etiqueta: la única salida de la ficha, y a ese tamaño y sin texto se
+         leía como parte del filete del borde. Ahora es una pastilla que dice lo
+         que hace y enseña la tecla que hace lo mismo. */
+      .card-acts { display: flex; align-items: center; gap: 0.35rem; flex: 0 0 auto; }
       .card-x {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        margin: -0.15rem -0.2rem 0 0;
+        padding: 0.2rem 0.45rem;
+        background: none;
+        border: 1px solid #ffffff2b;
+        border-radius: 999px;
+        color: #ffffff9e;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.62rem;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        line-height: 1.4;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .card-x:hover { background: #ffffff14; border-color: #ffffff5c; color: #fff; }
+      .card-x:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+      /* «comparar» desde la ficha: mismo tamaño de golpeo que cerrar, sin
+         texto porque el icono ya está en la barra de la izquierda con su
+         tooltip y repetir la palabra en dos sitios contiguos no añade nada. */
+      .card-add {
         flex: 0 0 auto;
         width: 1.65rem;
         height: 1.65rem;
-        margin: -0.15rem -0.25rem 0 0;
+        margin-top: -0.15rem;
         display: grid;
         place-items: center;
         background: none;
         border: 1px solid #ffffff1f;
         border-radius: 50%;
         color: #ffffff8c;
-        font-size: 0.95rem;
-        line-height: 1;
         cursor: pointer;
       }
-      .card-x:hover { background: #ffffff14; border-color: #ffffff3d; color: #fff; }
-      .card-x:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+      .card-add:hover:not(:disabled) { background: #ffffff14; border-color: #ffffff3d; color: #fff; }
+      .card-add:disabled { opacity: 0.32; cursor: default; }
+      .card-add:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+      /* La tecla, dibujada como tecla. Sale en la píldora y en el botón de
+         cerrar, que son los dos sitios donde hace falta decir «esto también se
+         hace con el teclado» sin gastar una frase. */
+      kbd {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.9em;
+        line-height: 1;
+        padding: 0.12em 0.34em;
+        border: 1px solid #ffffff33;
+        border-bottom-width: 2px;
+        border-radius: 4px;
+        background: #ffffff0f;
+        color: inherit;
+      }
+
+      /* ================= el comparador =================
+         Vive en el cajón izquierdo y no en el raíl derecho por una razón de
+         gesto: se empieza escribiendo palabras, y el buscador ya está aquí. Lo
+         que sí necesita es ancho —una matriz de cinco columnas no cabe en
+         14 rem—, así que el cajón se ensancha mientras está abierto y vuelve al
+         ancho de siempre al cerrarlo. La transición ya estaba puesta sobre
+         `width`, así que sale gratis. */
+      .galaxy-root.cmp-open.side-open { --side-w: min(23rem, 92vw); }
+
+      /* La pestaña que abre el comparador. Va pegada al buscador y no en la
+         tira de iconos de arriba: aquella es de cámara —órbita, vuelo, encuadre—
+         y un icono de comparar entre ellos se leía como un modo de vista. Aquí
+         cuelga del sitio donde ya se está escribiendo.
+
+         Ancho completo y con la palabra escrita: el resto del cajón son
+         controles con etiqueta, y un icono solo habría sido el único elemento
+         mudo de la columna. */
+      .cmp-tab {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        width: 100%;
+        background: var(--btn);
+        border: 1px solid var(--rule);
+        border-radius: 9px;
+        color: var(--ink-3);
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.66rem;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        padding: 0.42rem 0.55rem;
+        cursor: pointer;
+        text-align: left;
+      }
+      .cmp-tab:hover { background: rgba(255, 255, 255, 0.09); color: var(--ink-2); }
+      .cmp-tab.on { background: var(--btn-on); color: var(--ink); }
+      .cmp-tab:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+      .cmp-tab-w { flex: 1; }
+      /* Cuántas palabras hay dentro. Es lo que hace que el panel plegado siga
+         diciendo que tiene algo: sin esto, cerrarlo con cinco palabras cargadas
+         se parecía a haberlas perdido. */
+      .cmp-n {
+        flex: 0 0 auto;
+        min-width: 1.05rem;
+        text-align: center;
+        background: var(--ink);
+        color: #000;
+        border-radius: 999px;
+        font-size: 0.6rem;
+        line-height: 1.5;
+        padding: 0 0.25rem;
+      }
+      .cmp-caret { display: grid; place-items: center; opacity: 0.7; }
+      /* El galón apunta a donde va a aparecer el panel: a la derecha plegado,
+         hacia abajo abierto. */
+      .cmp-tab.on .cmp-caret { transform: rotate(90deg); }
+
+      .cmp {
+        display: flex;
+        flex-direction: column;
+        gap: 0.55rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid var(--rule);
+      }
+
+      /* --- las palabras elegidas --- */
+      .chips {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.3rem;
+      }
+      .chips li {
+        display: flex;
+        align-items: stretch;
+        background: var(--btn);
+        border: 1px solid var(--rule);
+        border-radius: 999px;
+        overflow: hidden;
+      }
+      .chip, .chip-x {
+        background: none;
+        border: 0;
+        color: var(--ink-2);
+        font: inherit;
+        font-size: 0.74rem;
+        padding: 0.2rem 0.5rem;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+      }
+      .chip { max-width: 9rem; }
+      .chip .w { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .chip:hover { background: #ffffff12; color: var(--ink); }
+      .chip-x {
+        border-left: 1px solid var(--rule);
+        padding: 0.2rem 0.42rem;
+        color: var(--ink-3);
+        font-size: 0.85rem;
+        line-height: 1;
+      }
+      .chip-x:hover { background: #ffffff1f; color: #fff; }
+      .chip:focus-visible, .chip-x:focus-visible { outline: 1px solid #fff; outline-offset: -1px; }
+
+      /* --- barras por pareja ---
+         La vara de medir es la línea vertical: la similitud típica entre dos
+         palabras que el kNN llamó vecinas. Va detrás de las barras y no delante
+         para que no parezca que las corta. */
+      .bars, .hops {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+      }
+      .bars button, .hops button {
+        width: 100%;
+        display: grid;
+        align-items: center;
+        gap: 0.4rem;
+        background: none;
+        border: 0;
+        border-radius: 6px;
+        color: inherit;
+        font: inherit;
+        text-align: left;
+        padding: 0.24rem 0.35rem;
+        cursor: pointer;
+      }
+      .bars button { grid-template-columns: minmax(0, 1fr) 4.5rem 1.9rem; }
+      .hops button { grid-template-columns: minmax(0, 1fr) auto; }
+      .bars button:hover, .hops button:hover:not(:disabled) { background: #ffffff12; }
+      .bars button:focus-visible, .hops button:focus-visible {
+        outline: 1px solid #ffffff59; outline-offset: -1px;
+      }
+      .hops button:disabled { cursor: default; color: var(--ink-4); }
+      .bar-w {
+        display: flex;
+        align-items: center;
+        gap: 0.15rem;
+        font-size: 0.76rem;
+        color: var(--ink-2);
+        min-width: 0;
+      }
+      .bar-w .w {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 5.2rem;
+      }
+      .bar-w .x { color: var(--ink-4); margin: 0 0.15rem; }
+      .bar {
+        position: relative;
+        display: block;
+        height: 0.42rem;
+        background: #ffffff14;
+        border-radius: 2px;
+        overflow: hidden;
+      }
+      .bar i {
+        position: absolute;
+        inset: 0 auto 0 0;
+        background: var(--ink);
+        border-radius: 2px;
+      }
+      /* La referencia, sobre el carril de cada barra. `--ref` lo pone el
+         componente en la lista, así que la posición sale del dato y no de un
+         número escrito aquí. */
+      .bars .bar::after {
+        content: "";
+        position: absolute;
+        left: var(--ref, 63%);
+        top: -2px;
+        bottom: -2px;
+        width: 1px;
+        background: #ffffff8c;
+      }
+      .bars .s, .hops .s {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.68rem;
+        color: var(--ink-3);
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+      .hops .w { font-size: 0.76rem; color: var(--ink-2); overflow: hidden;
+                 text-overflow: ellipsis; white-space: nowrap; }
+      .ref-note::before {
+        content: "";
+        display: inline-block;
+        width: 1px;
+        height: 0.62rem;
+        background: #ffffff8c;
+        margin-right: 0.4rem;
+        vertical-align: -0.1rem;
+      }
+
+      /* --- la matriz ---
+         Monocroma: en este panel el color ya significa zona (el punto de cada
+         fila), y teñir además la celda por magnitud daría dos lecturas al mismo
+         color a dos centímetros de distancia. */
+      .grid-wrap { overflow-x: auto; scrollbar-width: thin; }
+      .grid {
+        border-collapse: collapse;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.62rem;
+        font-variant-numeric: tabular-nums;
+      }
+      .grid th {
+        font-weight: 400;
+        color: var(--ink-3);
+        text-align: left;
+        padding: 0.18rem 0.3rem;
+        white-space: nowrap;
+      }
+      .grid tbody th { max-width: 6rem; overflow: hidden; text-overflow: ellipsis; }
+      .grid tbody th .w { font-family: "IBM Plex Sans", sans-serif; font-size: 0.7rem; }
+      /* La celda va de casi negra a blanca sucia con la similitud, así que la
+         tinta se invierte a medio camino: ninguna fija se lee en las dos
+         puntas. Con una sola —negra— los 0,07 quedaban negro sobre negro. */
+      .grid td {
+        padding: 0.22rem 0.3rem;
+        text-align: center;
+        border-radius: 3px;
+      }
+      .grid td.on-dark { color: var(--ink-2); }
+      .grid td.on-lit { color: #000; }
+      .grid td.self { background: none; color: var(--ink-4); }
+
+      /* --- la constelación --- */
+      .cons {
+        width: 100%;
+        height: auto;
+        display: block;
+        color: var(--ink);
+        font-family: "IBM Plex Sans", sans-serif;
+      }
+      .cons text {
+        font-size: 4.2px;
+        fill: var(--ink-2);
+        paint-order: stroke;
+        stroke: #000;
+        stroke-width: 1.1px;
+        stroke-linejoin: round;
+      }
+      .cons-p { cursor: pointer; }
+      .cons-p:hover text { fill: #fff; }
+
+      /* Etiqueta de cuántas elegidas toca un vecino común. */
+      .tag {
+        flex: 0 0 auto;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.58rem;
+        letter-spacing: 0.04em;
+        color: var(--ink-4);
+        border: 1px solid var(--rule);
+        border-radius: 999px;
+        padding: 0 0.32rem;
+        margin-right: 0.35rem;
+        white-space: nowrap;
+      }
+
+      /* ================= la píldora de estado =================
+         La salida, puesta donde está la mirada. El borde superior del lienzo es
+         la única banda que no ocupa ningún panel, y con algo seleccionado es
+         donde uno mira: la galaxia se acaba de mover hasta ahí.
+
+         `pointer-events` sólo en el botón: la píldora no puede robarle al
+         lienzo la franja de arriba para orbitar. */
+      .held {
+        position: absolute;
+        top: 0.9rem;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 5;
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        max-width: min(26rem, calc(100vw - 2rem));
+        padding: 0.3rem 0.35rem 0.3rem 0.75rem;
+        background: rgba(0, 0, 0, 0.9);
+        border: 1px solid #ffffff2b;
+        border-radius: 999px;
+        backdrop-filter: blur(10px);
+        pointer-events: none;
+        animation: card-in 0.18s ease-out;
+      }
+      .held-w {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.68rem;
+        letter-spacing: 0.03em;
+        color: var(--ink-2);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .held button {
+        pointer-events: auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        flex: 0 0 auto;
+        background: var(--btn-on);
+        border: 0;
+        border-radius: 999px;
+        color: #fff;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.62rem;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        padding: 0.28rem 0.6rem;
+        cursor: pointer;
+      }
+      .held button:hover { background: rgba(255, 255, 255, 0.26); }
+      .held button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+      @media (prefers-reduced-motion: reduce) {
+        .held { animation: none; }
+      }
+      /* En mano el borde de arriba lo comparte con nada, pero la píldora
+         completa no cabe: se queda el botón y el nombre se recorta antes. */
+      @media (max-width: 560px) {
+        .held { max-width: calc(100vw - 1.4rem); }
+        .held-w { font-size: 0.62rem; }
+      }
 
       .nbrs {
         list-style: none;
@@ -707,6 +1128,264 @@ import GalaxyView from "../components/Galaxy.tsx";
       }
       .link:hover { color: #fff; }
 
+      /* ================= lo que llenaba el hueco =================
+         Cuatro piezas nuevas y una regla común: **aparecen sólo cuando dicen
+         algo**. El raíl derecho estaba en blanco hasta el primer clic y el
+         color de la malla no se explicaba en ninguna parte, así que la primera
+         pantalla del atlas no ofrecía ni una lectura ni un gesto. */
+
+      /* Vista completa: el único botón de la tira que no anuncia un estado sino
+         una salida, así que va en blanco pleno como la flecha del cajón. */
+      .tool-home { color: var(--ink); }
+
+      /* Y su forma grande, sobre el lienzo. Aparece al alejarse o al coger algo:
+         un botón permanente estorba, y uno que sale justo cuando uno se ha
+         perdido se lee como lo que es. */
+      .go-home {
+        position: absolute;
+        left: 50%;
+        bottom: 1.05rem;
+        transform: translateX(-50%);
+        z-index: 3;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        padding: 0.38rem 0.5rem 0.38rem 0.7rem;
+        background: rgba(0, 0, 0, 0.82);
+        border: 1px solid #ffffff2b;
+        border-radius: 999px;
+        backdrop-filter: blur(10px);
+        color: var(--ink-2);
+        font: inherit;
+        font-size: 0.76rem;
+        cursor: pointer;
+        animation: card-in 0.18s ease-out;
+      }
+      .go-home:hover { background: rgba(0, 0, 0, 0.94); border-color: #ffffff5c; color: #fff; }
+      .go-home:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+      /* El atlas en reposo, pasando páginas. Arriba y no abajo porque arriba es
+         el sitio de `.held` — y las dos cosas no coinciden nunca: la deriva sólo
+         arranca con las manos vacías. Sin ratón: la franja de arriba tiene que
+         seguir sirviendo para orbitar. */
+      .drift {
+        position: absolute;
+        top: 0.9rem;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 3;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.15rem;
+        pointer-events: none;
+        text-align: center;
+        animation: card-in 0.4s ease-out;
+      }
+      .drift-w {
+        font-size: 1.05rem;
+        color: #fff;
+        letter-spacing: 0.01em;
+        text-shadow: 0 2px 12px #000c;
+      }
+      .drift-n {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.62rem;
+        letter-spacing: 0.08em;
+        color: var(--ink-3);
+        text-shadow: 0 2px 10px #000c;
+      }
+
+      /* Aviso de un instante: copiar un enlace no cambia nada en pantalla. */
+      .toast {
+        position: absolute;
+        left: 50%;
+        bottom: 3.4rem;
+        transform: translateX(-50%);
+        z-index: 5;
+        margin: 0;
+        padding: 0.35rem 0.75rem;
+        background: rgba(0, 0, 0, 0.9);
+        border: 1px solid #ffffff2b;
+        border-radius: 999px;
+        backdrop-filter: blur(10px);
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.66rem;
+        letter-spacing: 0.04em;
+        color: var(--ink-2);
+        pointer-events: none;
+        animation: card-in 0.18s ease-out;
+      }
+
+      /* --- cuerpos de los tres paneles del cajón --- */
+      .zones, .pat, .ana {
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+      }
+
+      /* La leyenda. Alta y con scroll propio: son dos docenas de regiones y no
+         puede empujar fuera del cajón lo que hay debajo. */
+      .zone-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        max-height: 16rem;
+        overflow-y: auto;
+        scrollbar-width: thin;
+        scrollbar-color: #ffffff2b transparent;
+      }
+      .zone-list button {
+        width: 100%;
+        display: flex;
+        /* Arriba y no al centro: el nombre son tres palabras y en un cajón de
+           14 rem casi siempre son dos líneas. Recortarlo con puntos suspensivos
+           dejaba «más · ha · t…», que no nombra nada. */
+        align-items: flex-start;
+        gap: 0.4rem;
+        text-align: left;
+        background: none;
+        border: 0;
+        border-radius: 8px;
+        color: var(--ink-2);
+        font: inherit;
+        font-size: 0.76rem;
+        padding: 0.3rem 0.35rem;
+        cursor: pointer;
+      }
+      .zone-list .w { flex: 1; line-height: 1.3; overflow-wrap: anywhere; }
+      .zone-list .swatch { align-self: flex-start; margin-top: 0.32rem; }
+      .zone-list .s {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.6rem;
+        color: var(--ink-4);
+        font-variant-numeric: tabular-nums;
+        flex: 0 0 auto;
+        margin-top: 0.16rem;
+      }
+      .zone-list button:hover, .zone-list button.on { background: #ffffff12; color: #fff; }
+      .zone-list button:focus-visible { outline: 1px solid #ffffff59; outline-offset: -1px; }
+
+      /* Las familias: la muestra de lo que se ha encendido, en dos columnas de
+         texto corrido. La lista no es el resultado — el resultado está en la
+         galaxia — así que no merece una fila por palabra. */
+      .pat-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.1rem 0.55rem;
+      }
+      .pat-list li {
+        display: flex;
+        align-items: center;
+        gap: 0.3rem;
+        font-size: 0.74rem;
+        color: var(--ink-2);
+      }
+
+      /* Botón de texto: el mismo peso que los `.chip` pero cuadrado, para lo
+         que hace algo en vez de elegir algo. */
+      .ghost {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.35rem;
+        background: var(--btn);
+        border: 1px solid var(--rule);
+        border-radius: 10px;
+        color: var(--ink-2);
+        font: inherit;
+        font-size: 0.74rem;
+        padding: 0.36rem 0.6rem;
+        cursor: pointer;
+      }
+      .ghost:hover:not(:disabled) { background: #ffffff14; border-color: #ffffff3d; color: #fff; }
+      .ghost:disabled { opacity: 0.4; cursor: default; }
+      .ghost:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+      /* --- analogías --- */
+      .ana-slot { display: flex; align-items: center; gap: 0.4rem; }
+      .ana-op {
+        width: 0.7rem;
+        flex: 0 0 auto;
+        text-align: center;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.8rem;
+        color: var(--ink-3);
+      }
+      .ana-slot .find { flex: 1; min-width: 0; }
+      .ana-slot .chip {
+        flex: 1;
+        max-width: none;
+        justify-content: flex-start;
+        background: var(--btn);
+        border: 1px solid var(--rule);
+        border-radius: 999px;
+      }
+      .chip-off { margin-left: auto; padding-left: 0.4rem; color: var(--ink-3); }
+      /* Las preguntas de ejemplo son tres palabras y un signo: con el ancho de
+         chip normal salían como «madrid − españa + fr…», que no es un ejemplo
+         de nada. Una por línea y enteras. */
+      .ana .chips li { width: 100%; }
+      .ana .chips .chip { max-width: none; width: 100%; }
+      /* La barra de la descarga. Son 15 MB: sin esto el botón parece roto. */
+      .ana-bar {
+        height: 3px;
+        border-radius: 2px;
+        background: #ffffff1a;
+        overflow: hidden;
+      }
+      .ana-bar i { display: block; height: 100%; background: #ffffffa6; }
+
+      /* --- por dónde empezar --- */
+      .start-acts { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.6rem; }
+      .start .chips { margin-top: 0.5rem; }
+      .start .foot { margin-top: 0.8rem; }
+
+      /* ================= modo inmersivo =================
+         Pantalla completa del navegador **y** la interfaz fuera. Quitar la
+         barra del navegador y dejar tres paneles tapando un tercio del lienzo
+         no es pantalla completa: lo que se quiere ver es la galaxia.
+
+         Se esconde con `display: none` y no con `opacity`: un panel invisible
+         que sigue recibiendo el ratón se lleva los arrastres que iban al lienzo,
+         y el tabulador seguiría entrando en un buscador que no está. */
+      .zen .side,
+      .zen .rail,
+      .zen .held,
+      .zen .go-home { display: none; }
+
+      /* La atribución **no** se esconde. Es el único requisito legal del
+         proyecto (fastText, CC BY-SA 3.0) y un modo de pantalla no es una
+         excusa para quitarla; se aparta al borde y baja de tinta, nada más. */
+      .galaxy-root.zen .attrib { left: 1rem; opacity: 0.5; }
+
+      /* La única salida a la vista. Tenue en reposo y sólida al pasar por
+         encima: tiene que estar sin competir con lo que se ha venido a mirar. */
+      .zen-exit {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        z-index: 5;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        padding: 0.4rem 0.5rem 0.4rem 0.65rem;
+        background: rgba(0, 0, 0, 0.55);
+        border: 1px solid #ffffff24;
+        border-radius: 999px;
+        backdrop-filter: blur(10px);
+        color: var(--ink-3);
+        font: inherit;
+        font-size: 0.74rem;
+        cursor: pointer;
+        animation: card-in 0.18s ease-out;
+      }
+      .zen-exit:hover { background: rgba(0, 0, 0, 0.9); border-color: #ffffff5c; color: #fff; }
+      .zen-exit:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
       /* ================= mando virtual (modo vuelo) =================
          Estaba escrito con veinte líneas de `element.style` en cada uno de los
          dos motores. El aspecto vive aquí, con el resto del tema; la mecánica,
@@ -740,6 +1419,246 @@ import GalaxyView from "../components/Galaxy.tsx";
         font-size: 0.6rem;
         letter-spacing: 0.05em;
         color: #ffffff59;
+      }
+
+      /* ================= la presentación =================
+         El único momento en que algo tapa la galaxia entera a propósito, y por
+         eso el velo no es negro opaco sino translúcido y desenfocado: detrás
+         se sigue viendo girar lo que se está explicando, que es la mitad del
+         argumento. Va por encima de todo el HUD (`.sugg` llega a 6) porque
+         mientras está puesta no hay nada más con lo que interactuar. */
+      .wl-veil {
+        position: absolute;
+        inset: 0;
+        z-index: 20;
+        display: grid;
+        place-items: center;
+        padding: 1rem;
+        background: rgba(2, 3, 8, 0.66);
+        backdrop-filter: blur(7px);
+        animation: wl-veil-in 0.2s ease-out;
+      }
+      @keyframes wl-veil-in { from { opacity: 0; } }
+
+      .wl {
+        width: min(31rem, 100%);
+        /* Alto mínimo, no automático. Las cuatro pantallas no miden lo mismo y
+           con el cuadro centrado cada avance lo recolocaba: el botón se movía
+           bajo el dedo entre un «siguiente» y el siguiente. Con el suelo puesto
+           y el pie empujado abajo, lo único que cambia al pasar es el contenido.
+           El `min()` es para que en apaisado de móvil el suelo no obligue a
+           hacer scroll dentro de un cuadro que cabía. */
+        min-height: min(27.5rem, 78vh);
+        max-height: calc(100vh - 2rem);
+        overflow-y: auto;
+        scrollbar-width: thin;
+        scrollbar-color: #ffffff2b transparent;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        background: rgba(0, 0, 0, 0.92);
+        border: 1px solid #ffffff2b;
+        border-radius: 20px;
+        padding: 1rem 1.25rem 0.9rem;
+        color: #fff;
+        animation: wl-in 0.22s cubic-bezier(0.2, 0.7, 0.3, 1);
+      }
+      /* El foco entra en el cuadro para que el lector de pantalla lea el título
+         antes que el botón; el anillo sobraría, la caja ya se ve entera. */
+      .wl:focus { outline: none; }
+      @keyframes wl-in {
+        from { opacity: 0; transform: translateY(10px) scale(0.985); }
+      }
+
+      .wl-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.6rem;
+      }
+      /* Saltar, con la tecla al lado. Mismo aspecto que cerrar la ficha: es la
+         misma clase de gesto y no hay motivo para que se vea distinto. */
+      .wl-skip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.2rem 0.5rem;
+        background: none;
+        border: 1px solid #ffffff2b;
+        border-radius: 999px;
+        color: #ffffff9e;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.62rem;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .wl-skip:hover { background: #ffffff14; border-color: #ffffff5c; color: #fff; }
+      .wl-skip:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+      /* La lámina. El fondo es un resto de la misma niebla de `.veil`: el
+         dibujo tiene que parecer recortado de la galaxia, no pegado encima. */
+      .wl-stage {
+        margin-top: 0.15rem;
+        padding: 0.35rem 0.5rem;
+        border: 1px solid #ffffff14;
+        border-radius: 14px;
+        background:
+          radial-gradient(120% 150% at 50% 0%,
+            rgba(96, 132, 255, 0.12), rgba(10, 14, 40, 0) 72%);
+        animation: wl-fade 0.24s ease-out;
+      }
+      .wl-art { display: block; width: 100%; height: auto; }
+      .wl-art-w {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 13px;
+        fill: #fff;
+      }
+      .wl-art-n {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 7.5px;
+        letter-spacing: 0.07em;
+        fill: #ffffff59;
+      }
+      @keyframes wl-fade { from { opacity: 0; } }
+
+      /* Los cuatro gestos. No van dentro de una lámina porque cada uno nombra
+         algo que existe en la pantalla de detrás: son una lista, no un dibujo. */
+      .wl-acts {
+        list-style: none;
+        margin: 0.15rem 0 0;
+        padding: 0;
+        display: grid;
+        gap: 0.5rem;
+        animation: wl-fade 0.24s ease-out;
+      }
+      .wl-acts li {
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+        font-size: 0.88rem;
+        line-height: 1.4;
+        color: #ffffffb8;
+      }
+      .wl-acts b { font-weight: 600; color: #fff; }
+      .wl-acts-i {
+        flex: 0 0 auto;
+        width: 1.9rem;
+        height: 1.9rem;
+        display: grid;
+        place-items: center;
+        border: 1px solid var(--rule);
+        border-radius: 9px;
+        background: var(--btn);
+        color: #fff;
+      }
+
+      .wl-head {
+        margin: 0.55rem 0 0;
+        font-size: 1.28rem;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        line-height: 1.15;
+        color: #fff;
+      }
+      .wl-body {
+        margin: 0;
+        font-size: 0.9rem;
+        line-height: 1.55;
+        color: #ffffffb8;
+      }
+      /* El renglón de letra pequeña: lo que el texto de arriba afirma, dicho
+         con precisión. Es el sitio donde va la promesa que el proyecto no puede
+         romper —todo se mide en 300D— sin cargarla en el párrafo. */
+      .wl-note {
+        margin: 0.45rem 0 0;
+        padding-top: 0.55rem;
+        border-top: 1px solid #ffffff1f;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.62rem;
+        line-height: 1.6;
+        letter-spacing: 0.04em;
+        color: #ffffff73;
+      }
+
+      .wl-foot {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.6rem;
+        /* `auto`, no una medida: es lo que clava el pie abajo del alto mínimo
+           en la pantalla más corta y lo deja pegado al texto en la más larga. */
+        margin-top: auto;
+        padding-top: 0.5rem;
+      }
+      /* Los puntos son botones. En una presentación de cuatro pantallas es
+         donde la gente pincha para volver a la anterior, así que negarles el
+         clic es dejar un mando muerto justo donde se busca. */
+      .wl-dots { display: flex; gap: 0.35rem; }
+      .wl-dot {
+        width: 0.45rem;
+        height: 0.45rem;
+        padding: 0;
+        border: 0;
+        border-radius: 50%;
+        background: #ffffff33;
+        cursor: pointer;
+        transition: background 0.16s ease, transform 0.16s ease;
+      }
+      .wl-dot:hover { background: #ffffff7a; }
+      .wl-dot.on { background: #fff; transform: scale(1.15); }
+      .wl-dot:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+
+      .wl-acts-n { display: flex; align-items: center; gap: 0.4rem; }
+      .wl-back {
+        background: none;
+        border: 0;
+        padding: 0.4rem 0.5rem;
+        color: var(--ink-3);
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.66rem;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        cursor: pointer;
+      }
+      .wl-back:hover { color: #fff; }
+      .wl-back:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+      /* El único control blanco macizo de todo el sitio, y a propósito: es la
+         acción que se espera de quien acaba de llegar. Un segundo botón con
+         este peso convertiría la jerarquía en dos empates. */
+      .wl-go {
+        background: #fff;
+        border: 0;
+        border-radius: 999px;
+        color: #000;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.66rem;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        padding: 0.45rem 0.9rem;
+        cursor: pointer;
+      }
+      .wl-go:hover { background: #ffffffd6; }
+      .wl-go:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+
+      /* En mano el cuadro es la pantalla: sin sitio para márgenes ni para la
+         lámina a tamaño de escritorio. */
+      @media (max-width: 560px) {
+        .wl-veil { padding: 0.6rem; }
+        .wl { padding: 0.85rem 0.95rem 0.8rem; border-radius: 16px; }
+        .wl-head { font-size: 1.12rem; }
+        .wl-body { font-size: 0.85rem; }
+        .wl-acts li { font-size: 0.82rem; }
+      }
+      /* Alto de sobra no hay en apaisado de móvil: la lámina es lo primero que
+         sobra, porque el texto sí es obligatorio. */
+      @media (max-height: 480px) {
+        .wl-stage { display: none; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .wl-veil, .wl, .wl-stage, .wl-acts { animation: none; }
+        .wl-dot { transition: none; }
       }
 
       .ns { position: absolute; top: 45%; width: 100%; text-align: center; }

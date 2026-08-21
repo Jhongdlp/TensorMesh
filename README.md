@@ -184,13 +184,75 @@ camino no lleva a ninguna parte. El resto de la galaxia baja al 8%: ni a cero,
 que deja la selección flotando en el vacío, ni más arriba, donde 50.000 puntos
 vuelven a taparla.
 
+**Comparar varias palabras es otra pregunta, y necesita otro dato.** La ficha
+enseña el barrio de una palabra: sus vecinos y el camino hasta otra. Pero
+«cuánto se parecen camello e inglaterra» no está en el grafo — no son vecinos,
+así que no hay arista entre ellos ni peso que leer — y la regla del proyecto es
+que toda afirmación se calcula en 300D. De ahí `vecs.bin` y las peticiones por
+rango: el comparador baja 300 bytes por palabra y calcula el coseno de verdad.
+
+Admite hasta **cinco** palabras: son diez parejas, que aún caben en una lista
+que se lee de un vistazo; con seis son quince y hay que buscar. Cuatro vistas
+del mismo dato, cada una diciendo algo que las otras no:
+
+- **las barras** dan el número y, sobre todo, la vara de medir. Un 0,35 suelto
+  no significa nada; junto a la línea de «así de parecidas son dos palabras que
+  el kNN llamó vecinas» —0,63 en español, 0,60 en inglés— se lee de golpe;
+- **la matriz** aparece a partir de tres palabras, cuando los pares dejan de
+  caber en la cabeza. Es monocroma a propósito: en ese panel el color ya
+  significa zona, y teñir además la celda por magnitud daría dos lecturas al
+  mismo color a dos centímetros de distancia;
+- **la constelación** enseña la forma del grupo, que no está en ninguna lista.
+  Es escalado multidimensional clásico sobre la matriz de similitudes, y la
+  distancia que proyecta es la euclídea real en 300D: con los vectores
+  normalizados, `|u − v|² = 2 − 2·cos` exactamente. Los dos ejes comparten
+  escala — normalizarlos por separado llenaría el recuadro a costa de estirar
+  una dirección más que la otra, y entonces las distancias del dibujo dejarían
+  de ser las que promete. Se muestra el **estrés**: `rey · reina · hombre ·
+  mujer` pierde el 8% al aplanar y sale como el paralelogramo de la analogía;
+  cinco palabras sin relación pierden el 30% y hay que decirlo;
+- **los saltos y los vecinos en común** devuelven al grafo dibujado: son la
+  parte que se puede ir a mirar con los ojos.
+
+El grupo se enciende **solo** en la galaxia al añadir o quitar una palabra, y se
+enciende con los caminos entre las elegidas, no sólo con ellas: sin los caminos
+serían cinco puntos sueltos en el vacío, y con ellos se ve por qué barrios cruza
+el parecido. Antes había un botón «ver en la galaxia» y era el paso que nadie
+daba — se escribían cinco palabras, se leía la tabla y uno se iba sin haber
+mirado nunca el atlas, que es la mitad de la respuesta.
+
+**La salida tiene que verse tanto como la entrada.** Seleccionar era fácil —un
+clic en un punto— y soltar era un «×» de 11 px en la esquina de un panel del
+raíl derecho; con un grupo del comparador resaltado no había ficha, así que no
+había ningún botón en absoluto. Ahora hay tres salidas visibles y todas hacen lo
+mismo: una píldora en el borde superior del lienzo que dice **qué** se tiene
+cogido y lleva el botón de soltar, el botón de la ficha con la palabra escrita
+en vez del aspa, y `Esc`. La pista del cajón cambia con el estado: mientras no
+hay nada cogido dice cómo coger, y en cuanto lo hay dice cómo soltar, en el
+mismo renglón. `Esc` vive en el componente y no en `KeyFly` a propósito: `KeyFly`
+se instancia una vez por motor, y colgarla de uno la habría dejado muerta en el
+otro — que es justo el camino que se ve al abrir el navegador en Linux sin la
+bandera de WebGPU.
+
+Y la comparación va en la URL (`?cmp=rey,reina,hombre,mujer`), como ya iban
+`?w=` y `?to=`: «mira lo que se parecen éstas» no se puede decir de otra forma
+sin pedirle a quien lee que las teclee una a una.
+
 Siguiente: **fase 4**, las lecciones.
 
 ### Tests
 
 ```bash
-cd web && npm test        # tipos + física + render
+cd web && npm test        # tipos + unidad + física + render
 ```
+
+`test/unit.mjs` no toca la GPU y corre en menos de un segundo: buscador,
+caminos, escalones de resalte, teclado, el contrato de bytes de los binarios y
+el comparador. De este último comprueba lo que se rompe en silencio — que el
+offset `i * 300` de `vecs.bin` cae en la palabra `i`, contrastando su coseno
+contra los pesos que el pipeline guardó en el CSR — y que el MDS es exacto:
+sobre un cuadrado de lado 1 tiene que devolver estrés 0 y las distancias
+intactas.
 
 `test/physics.mjs` ejecuta el WGSL real contra la referencia numpy vía Dawn
 (`@kmamal/gpu`), sin navegador. Dos comprobaciones: con K=0 la simulación es
@@ -210,6 +272,7 @@ pipeline/build.py     01  limpieza + marcado de palabras vacías
                       05  comunidades: propagación + fusión aglomerativa
                       06  layout: semilla PCA + LinLog con muestreo negativo
                       07  empaquetado a binarios CSR
+pipeline/vectors.py   08  vectores 300D a int8 para el comparador
 pipeline/preview.py       render offline con PIL (iteración rápida, sin navegador)
 pipeline/tune.py          reejecuta solo la etapa 06 sobre el grafo cacheado
 pipeline/validate.py      vecinos conocidos, analogías, coherencia de regiones
@@ -230,6 +293,7 @@ O por etapas:
 ```bash
 python3 pipeline/fetch.py    es 100000
 python3 pipeline/build.py    es 50000 1200
+python3 pipeline/vectors.py  es
 python3 pipeline/validate.py es
 python3 pipeline/preview.py  es
 ```
@@ -250,6 +314,9 @@ src/galaxy/gpu/render.wgsl  aristas y nodos, sin vertex buffers
 src/galaxy/gpu/pick.wgsl    selección por atomicMin
 src/galaxy/gpu/engine.ts    buffers, pipelines y bucle de frame
 src/galaxy/gpu/camera.ts    mat4 y cámara orbital, sin dependencias
+src/galaxy/vectors.ts       vecs.bin por rangos HTTP, caché y respaldo
+src/galaxy/compare.mjs      matriz de similitudes, MDS clásico, vecinos comunes
+src/components/Compare.tsx  el comparador: hasta 5 palabras a la vez
 ```
 
 ## Formato de datos
@@ -261,6 +328,29 @@ src/galaxy/gpu/camera.ts    mat4 y cámara orbital, sin dependencias
 | `labels.bin` | offsets Uint32 + blob UTF-8 | 591 KB |
 | `attrs.bin` | comunidad Uint8, rango Uint16, banderas Uint8 | 195 KB |
 | **total** | | **2.138 KB** → 43,8 bytes/nodo |
+| `vecs.bin` | 300 × int8 por palabra, sin cabecera | 14.648 KB |
+
+`vecs.bin` va aparte de la cuenta porque **no se descarga**. Es el archivo que
+el comparador necesita —la similitud entre dos palabras cualesquiera no está en
+`edges.bin`, que sólo guarda el peso de las aristas del kNN podado— y se lee a
+trozos: el registro es contiguo y sin cabecera, así que la palabra `i` se pide
+con `Range: bytes=i*300-(i*300+299)`. **300 bytes por palabra en el cable**, no
+15 MB. Si el servidor ignora el rango y responde 200, el cliente se queda el
+archivo entero y sigue funcionando; si el archivo no está, el comparador se
+apaga y el resto del atlas no se entera.
+
+La cuantización es int8 con escala **por vector**, y la escala no se publica: el
+coseno es invariante a escala y el cliente renormaliza al decodificar. Medido
+sobre 200.000 pares al azar de `data/es`:
+
+| error del coseno vs float32 | medio | p99 | máximo |
+|---|---|---|---|
+| int8, escala por vector | 0,00050 | 0,00166 | 0,00332 |
+
+La ficha muestra dos decimales, así que el error queda por debajo de lo que se
+ve. Con una escala **global** sube unas cinco veces: la mediana de `max|x|` es
+0,19 pero el máximo es 0,54, y un puñado de vectores atípicos se llevaría todo
+el rango.
 
 Con 50.000 palabras los índices de arista caben justo en `Uint16` (máximo
 65.535). Escalar más obliga a `Uint32` y duplica el archivo más pesado.

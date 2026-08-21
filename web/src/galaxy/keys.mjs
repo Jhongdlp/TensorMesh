@@ -26,6 +26,24 @@ const DAMP = 0.86;
 const DAMP_ZOOM = 0.82;
 const STILL = 2e-5;
 
+/** Hasta dónde se puede echar la cámara atrás, en múltiplos del encuadre
+ *  completo (`frame()` en el motor WebGPU, el constructor en el respaldo).
+ *
+ *  Alejarse sin tope no es libertad: la galaxia encoge hasta un grumo de dos
+ *  píxeles y a partir de ahí la rueda parece haberse quedado sin efecto, con la
+ *  nube demasiado pequeña para reconocer nada y demasiado lejos para que el
+ *  siguiente empujón de vuelta se note. La salida —`Inicio`, el botón de vista
+ *  completa— existe, pero exige saber que existe.
+ *
+ *  2,5× deja la nube ocupando ~⅓ del alto: se ve entera, con aire alrededor, y
+ *  todavía se distinguen los barrios por su color. Más allá de ahí no hay nada
+ *  que mirar que no se viese ya.
+ *
+ *  Vive aquí, con el resto del tacto de la cámara, porque los dos motores
+ *  tienen que frenar en el mismo sitio: un tope distinto en cada uno haría que
+ *  la misma galaxia se comportara de dos maneras según la máquina. */
+export const ZOOM_OUT = 2.5;
+
 /** Las teclas que pilota la cámara, y sólo ésas: cualquier otra dejaría el
  *  bucle de render despierto sin nada que dibujar (`active()` mira este set). */
 const CAM_KEYS = new Set([
@@ -41,12 +59,17 @@ const SWALLOW = new Set([
 
 /** ¿El foco está en un campo de texto? Entonces las teclas son del campo:
  *  después de buscar una palabra el cursor sigue en el input, y sin esto
- *  «wasd» se escribiría en el buscador en vez de mover la cámara. */
+ *  «wasd» se escribiría en el buscador en vez de mover la cámara.
+ *
+ *  Se exporta porque `Galaxy.tsx` necesita el mismo filtro para su tecla de
+ *  cerrar: `Escape` dentro del buscador cierra el desplegable, y sólo fuera de
+ *  él suelta la selección. Duplicar la comprobación allí era garantizar que las
+ *  dos se separasen. */
 /**
  * @param {EventTarget | null} el
  * @returns {boolean}
  */
-function typing(el) {
+export function typing(el) {
   const n = /** @type {HTMLElement | null} */ (el);
   if (!n || !n.tagName) return false;
   return /^(INPUT|TEXTAREA|SELECT)$/.test(n.tagName) || n.isContentEditable;

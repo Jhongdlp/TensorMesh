@@ -1,9 +1,14 @@
 import * as THREE from "three";
 import type { Galaxy } from "./loader";
 import { zoneColours } from "./palette.mjs";
-import { HL, tiers, pathTiers } from "./highlight.mjs";
-import { KeyFly, type FlyMode } from "./keys.mjs";
+import { HL, tiers, pathTiers, spotTiers } from "./highlight.mjs";
+import { KeyFly, type FlyMode, ZOOM_OUT } from "./keys.mjs";
 import { createJoystick } from "./joystick";
+import type { CamState } from "./gpu/camera";
+
+/** Deriva del atractor. El mismo número que `gpu/camera.ts`, y por lo mismo:
+ *  el reposo tiene que verse igual en los dos motores. */
+const ATTRACT_YAW = 0.0011;
 
 /** Cuánto crece un nodo resaltado, igual que `selScale` en el motor WebGPU. */
 const SEL_SCALE = 2.5;
@@ -183,6 +188,10 @@ export class GalaxyScene {
 
   private target = new THREE.Vector3();
   private distance = 10;
+  /** Tope de alejamiento, en unidades de mundo. El mismo múltiplo del encuadre
+   *  completo que usa el motor WebGPU: el freno no puede depender de si la
+   *  máquina tiene la bandera de WebGPU puesta. */
+  private maxDistance = Infinity;
   private theta = 0;
   private phi = Math.PI / 2;
 
@@ -190,6 +199,8 @@ export class GalaxyScene {
    *  ratón — la galaxia se queda quieta y sólo se gira alrededor de ella.
    *  `fly`: cámara libre con joystick. */
   private cameraMode: FlyMode = 'orbit';
+  /** Modo atractor: la galaxia gira sola cuando nadie la toca. */
+  private attracting = false;
   private joyActive = false;
   private joyStartX = 0;
   private joyStartY = 0;
@@ -244,6 +255,7 @@ export class GalaxyScene {
     this.camera = new THREE.PerspectiveCamera(55, 1, this.radius * 0.004, this.radius * 40);
     this.target.copy(sphere.center);
     this.distance = this.radius * 2.15;
+    this.maxDistance = this.distance * ZOOM_OUT;
     this.theta = 0;
     this.phi = Math.PI / 2;
     this.camera.position.copy(this.eye());
@@ -294,6 +306,31 @@ export class GalaxyScene {
     this.theta = this.home.theta;
     this.phi = this.home.phi;
     this.vDist = 0;
+  }
+
+  /** Deriva en reposo. Aquí no hay salto de frame que levantar —este motor
+   *  dibuja siempre— así que basta con encender la bandera. */
+  setAttract(on: boolean) { this.attracting = on; }
+
+  /** La órbita, para escribirla en un enlace. Los mismos seis números que el
+   *  motor WebGPU: un encuadre compartido desde aquí abre igual allí. */
+  state(): CamState {
+    return {
+      t: [this.target.x, this.target.y, this.target.z],
+      d: this.distance,
+      th: this.theta,
+      ph: this.phi,
+    };
+  }
+
+  setState(s: CamState) {
+    this.fly.stop();
+    this.flyTarget = null;
+    this.vTheta = this.vPhi = this.vDist = 0;
+    this.target.set(s.t[0], s.t[1], s.t[2]);
+    this.distance = Math.min(s.d, this.maxDistance);
+    this.theta = s.th;
+    this.phi = Math.min(Math.PI - EPS, Math.max(EPS, s.ph));
   }
 
   setCameraMode(mode: FlyMode) {
@@ -404,6 +441,13 @@ export class GalaxyScene {
     this.spreadDim();
   }
 
+  /** El destello del atractor. Ver `spotTiers`: la galaxia no se atenúa. */
+  spotlight(id: number | null) {
+    this.selected = id;
+    spotTiers(this.g, id, this.nodeDim.array as Float32Array);
+    this.spreadDim();
+  }
+
   /** Resalte de un camino. Ver `pathTiers`: mismos escalones, otro reparto. */
   selectPath(path: number[] | null) {
     this.selected = path && path.length ? path[path.length - 1] : null;
@@ -495,6 +539,7 @@ export class GalaxyScene {
     const joy = createJoystick(el);
 
     const down = (e: PointerEvent) => {
+      this.flyTarget = null; // Interrumpir vuelo automático al hacer click o arrastrar
       // El arrastre secundario desplaza el centro, así que en órbita no existe:
       // todo arrastre gira. La galaxia se queda donde está.
       const pan = e.button === 2 || e.shiftKey;
@@ -511,6 +556,7 @@ export class GalaxyScene {
     };
     const move = (e: PointerEvent) => {
       if (!this.joyActive) return;
+      this.flyTarget = null; // Interrumpir vuelo automático al arrastrar
       const dx = e.clientX - this.joyCurX;
       const dy = e.clientY - this.joyCurY;
       this.joyCurX = e.clientX;
@@ -530,6 +576,7 @@ export class GalaxyScene {
     };
     const wheel = (e: WheelEvent) => {
       e.preventDefault();
+      this.flyTarget = null; // Interrumpir vuelo automático al hacer zoom
       this.vDist += Math.sign(e.deltaY) * 0.055;
     };
     const menu = (e: Event) => e.preventDefault();
@@ -610,6 +657,9 @@ export class GalaxyScene {
   }
 
   private flyStep() {
+    if (this.fly.active()) {
+      this.flyTarget = null;
+    }
     if (!this.fly.active()) { this.fly.read(); return; }
     const k = this.fly.read();
 
@@ -631,6 +681,12 @@ export class GalaxyScene {
     this.raf = requestAnimationFrame(this.loop);
     this.flyLerp();
     this.flyStep();
+
+    // La deriva del atractor, tapada por cualquier gesto: mientras haya vuelo,
+    // arrastre o tecla, la galaxia obedece en vez de irse sola.
+    if (this.attracting && !this.flyTarget && !this.dragging && !this.fly.active()) {
+      this.theta += ATTRACT_YAW;
+    }
 
     if (this.joyActive && this.cameraMode === 'fly') {
       const dx = this.joyCurX - this.joyStartX;
@@ -671,6 +727,14 @@ export class GalaxyScene {
     this.vTheta *= 0.86;
     this.vPhi *= 0.86;
     this.vDist *= 0.82;
+
+    // El tope de alejamiento, igual que en `gpu/camera.ts`: se aplica al final
+    // del paso, y cortando la inercia para que el tope se sienta como un tope
+    // y no como un mando que ha dejado de responder.
+    if (this.distance > this.maxDistance) {
+      this.distance = this.maxDistance;
+      if (this.vDist > 0) this.vDist = 0;
+    }
 
     const eyePos = this.eye();
     this.camera.position.copy(eyePos);

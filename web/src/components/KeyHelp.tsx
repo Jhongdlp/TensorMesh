@@ -19,6 +19,7 @@ const ORBIT: { keys: string[]; es: string; en: string }[] = [
   { keys: ["+", "−"], es: "acercar · alejar", en: "zoom in · out" },
   { keys: ["Mayús", "Alt"], es: "rápido · fino", en: "fast · fine" },
   { keys: ["Inicio"], es: "vista completa", en: "whole galaxy" },
+  { keys: ["F"], es: "pantalla completa", en: "fullscreen" },
 ];
 
 const FLY: { keys: string[]; es: string; en: string }[] = [
@@ -30,6 +31,7 @@ const FLY: { keys: string[]; es: string; en: string }[] = [
   { keys: ["+", "−"], es: "acercar · alejar", en: "zoom in · out" },
   { keys: ["Mayús", "Alt"], es: "rápido · fino", en: "fast · fine" },
   { keys: ["Inicio"], es: "vista completa", en: "whole galaxy" },
+  { keys: ["F"], es: "pantalla completa", en: "fullscreen" },
 ];
 
 export default function KeyHelp(
