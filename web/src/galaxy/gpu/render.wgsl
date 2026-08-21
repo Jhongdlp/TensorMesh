@@ -18,7 +18,10 @@ struct Uni {
   selScale    : f32,   // cuánto crece un nodo resaltado
   selEdge     : f32,   // cuánto brilla una arista resaltada
   fogSpan     : f32,   // grosor de la bruma, en unidades de mundo
+  edgeRef     : f32,   // longitud de arista de referencia para la exposición
 };
+// 80 + 12 f32 = 128 bytes **justos**. El uniform está lleno: cualquier campo
+// nuevo obliga a subir a 144 y a tocar `engine.ts:writeRender` y `test/render.mjs`.
 
 @group(0) @binding(0) var<uniform>       U       : Uni;
 @group(0) @binding(1) var<storage, read> pos     : array<vec4f>;
@@ -71,6 +74,37 @@ fn fogT(clipW: f32) -> f32 {
 
 fn depthFade(t: f32) -> f32 { return mix(1.0, FOG_FLOOR, t); }
 
+// ---------------------------------------------------------------- exposición
+// El blending es aditivo: lo que una arista aporta a la imagen no es su brillo,
+// es su brillo *por su longitud rasterizada*. Y esta nube tiene una cola larguí-
+// sima. Medido sobre `positions.bin` de es (147.307 aristas, radio p95 = 5.098):
+//
+//     mediana          0,025 r
+//     p95              0,574 r
+//     L > 0,50 r        7,0% de las aristas → **36,7% de la tinta**
+//     L > 1,00 r        0,6% de las aristas →   5,2% de la tinta
+//
+// Es decir: los radios que cruzan el encuadre hasta un nodo suelto depositan
+// unas 87× más luz que una arista mediana, y cada uno cuenta *una* relación kNN,
+// igual que ella. La imagen sin corregir está sesgada hacia lo largo: los pocos
+// radios gritan y la malla del núcleo — donde está la información — susurra.
+//
+// Así que se normaliza la exposición: alfa ∝ 1/longitud a partir de `edgeRef`,
+// suavizado con una raíz para no borrarlos del todo. No es esconder dato — el
+// radio sigue ahí, con la tinta que le toca por las relaciones que representa.
+//
+// La longitud se mide en **mundo**, no en pantalla, y por eso es invariante al
+// zoom: al meterse en un barrio todas las aristas se hacen enormes en píxeles
+// pero siguen siendo cortas en mundo, y la malla no se apaga. Con un umbral en
+// píxeles esto peleaba con el lazo de presupuesto, que ya modula el brillo.
+const EXP_SOFT = 0.65;   // 1 = corrección exacta; 0 = ninguna
+const EXP_FLOOR = 0.10;  // ni el radio más largo desaparece del todo
+
+fn expose(pa: vec3f, pb: vec3f) -> f32 {
+  let l = length(pa - pb);
+  return max(pow(U.edgeRef / max(U.edgeRef, l), EXP_SOFT), EXP_FLOOR);
+}
+
 fn alphaOf(h: f32) -> f32 { return min(h, 1.0); }
 fn boostOf(h: f32) -> f32 { return max(h - 1.0, 0.0); }
 // Suelo de los nodos atenuados. A 0,035 el fondo se vuelve negro y con él se va
@@ -84,6 +118,12 @@ fn nodeAlpha(h: f32) -> f32 { return mix(0.12, 1.0, alphaOf(h)); }
 @vertex
 fn vsEdge(@builtin(vertex_index) vi: u32) -> VOut {
   let i = visEdges[vi];
+  // El otro extremo. `cullEdges` escribe los dos índices en huecos consecutivos
+  // y siempre en pareja par/impar, así que `vi ^ 1` es el compañero — sin buffer
+  // extra. Los dos vértices calculan la *misma* longitud (es simétrica), que es
+  // lo que hace falta: si difiriesen, el alfa se interpolaría a lo largo del
+  // segmento y la arista saldría en degradado.
+  let j = visEdges[vi ^ 1u];
   let h = hl[i];
   var o: VOut;
   o.clip = U.viewProj * vec4f(pos[i].xyz, 1.0);
@@ -97,7 +137,11 @@ fn vsEdge(@builtin(vertex_index) vi: u32) -> VOut {
   // El empujón del resalte va en el *color*, no en el alfa: el factor de mezcla
   // se recorta a 1 antes de llegar al framebuffer, así que multiplicar el alfa
   // no subía nada — el camino salía tan apagado como la malla de fondo.
-  o.fade = depthFade(t) * alphaOf(h);
+  // El camino de la selección va exento: son unas decenas de aristas, son largas
+  // a propósito (cruzan a los vecinos) y son justo las que se está mirando.
+  let lit = max(h, hl[j]) > 1.0;
+  let ex  = select(expose(pos[i].xyz, pos[j].xyz), 1.0, lit);
+  o.fade = depthFade(t) * alphaOf(h) * ex;
   o.uv   = vec2f(0.0);
   o.boost = boostOf(h);
   return o;
@@ -107,7 +151,12 @@ fn vsEdge(@builtin(vertex_index) vi: u32) -> VOut {
 fn fsEdge(v: VOut) -> @location(0) vec4f {
   // `boost` se interpola entre los dos extremos, así que una arista que sale del
   // barrio se apaga a lo largo de su recorrido: se ve hacia dónde va.
-  return vec4f(v.rgb * U.edgeBright * (1.0 + v.boost * U.selEdge), v.fade);
+  let lit = v.rgb * U.edgeBright * (1.0 + v.boost * U.selEdge);
+  // Y el camino cambia tono de zona por visibilidad. Llevar la arista a "color
+  // pleno" no basta: un hilo de un píxel con el azul de su zona sigue siendo
+  // invisible sobre negro, y compite con vecinos que son discos de veinte. Lo
+  // que el camino cuenta es topología, no zona, así que aquí sí se blanquea.
+  return vec4f(mix(lit, vec3f(1.0), clamp(v.boost * 0.6, 0.0, 0.85)), v.fade);
 }
 
 // -------------------------------------------------------------------- nodos

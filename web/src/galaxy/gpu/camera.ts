@@ -4,7 +4,8 @@
  *  Ojo con la convención: el NDC de WebGPU tiene z en [0,1] (como D3D), no en
  *  [-1,1] como OpenGL. La matriz de proyección es distinta a la de WebGL. */
 
-import { KeyFly } from "../keys";
+import { KeyFly, type FlyMode } from "../keys.mjs";
+import { createJoystick } from "../joystick";
 
 export type Mat4 = Float32Array;
 export type Vec3 = [number, number, number];
@@ -58,7 +59,12 @@ export function multiply(a: Mat4, b: Mat4): Mat4 {
   return o;
 }
 
-const EPS = 1e-4;
+/** Margen del polo. No es cosmético: `lookAt` usa un `up` fijo (0,1,0) y con la
+ *  vista casi paralela a él el producto vectorial degenera — la imagen daba un
+ *  giro salvaje justo al llegar arriba o abajo. Dos grados bastan para que la
+ *  base siga siendo ortonormal y el tope se sienta como un tope, no como un
+ *  fallo. */
+const EPS = 0.035;
 
 export class OrbitCamera {
   target: Vec3 = [0, 0, 0];
@@ -83,7 +89,10 @@ export class OrbitCamera {
   /** Encuadre inicial, para volver a él con Inicio. */
   private home: Vec3 = [0, 0, 0];
   private homeDistance = 10;
-  mode: 'orbit' | 'fly' = 'orbit';
+  /** `orbit`: el centro de la órbita **no se mueve**, ni con teclas ni con el
+   *  ratón. `fly`: cámara libre. Lo cambia `setMode`, que además avisa al
+   *  teclado — si no, WASD seguiría trasladando en modo órbita. */
+  private mode: FlyMode = 'orbit';
   private dragging = 0; // 0 nada, 1 rotar, 2 desplazar
   private joyActive = false;
   private joyStartX = 0;
@@ -91,6 +100,14 @@ export class OrbitCamera {
   private joyCurX = 0;
   private joyCurY = 0;
   private detach: (() => void) | null = null;
+
+  setMode(m: FlyMode) {
+    if (m === this.mode) return;
+    this.mode = m;
+    this.fly.setMode(m);
+    this.dragging = 0;
+    this.joyActive = false;
+  }
 
   eye(): Vec3 {
     const sp = Math.sin(this.phi);
@@ -155,7 +172,9 @@ export class OrbitCamera {
     this.theta += k.yaw;
     this.phi = Math.min(Math.PI - EPS, Math.max(EPS, this.phi + k.pitch));
     this.distance *= 1 + k.zoom;
-    if (!k.fwd && !k.side && !k.vert) return;
+    // En órbita el teclado no emite traslación, pero la guarda se queda: el
+    // objetivo es el ancla de la escena y aquí se ve de un vistazo.
+    if (this.mode !== 'fly' || (!k.fwd && !k.side && !k.vert)) return;
     const { f, r } = this.basis();
     const d = this.distance;
     for (let i = 0; i < 3; i++) {
@@ -244,70 +263,20 @@ export class OrbitCamera {
   }
 
   attach(el: HTMLElement) {
-    let joyEl: HTMLDivElement | null = null;
-    let knobEl: HTMLDivElement | null = null;
-
-    const showJoystick = (x: number, y: number) => {
-      joyEl = document.createElement("div");
-      joyEl.style.position = "absolute";
-      const rect = el.getBoundingClientRect();
-      const parentRect = el.parentElement?.getBoundingClientRect() || rect;
-      const lx = x - parentRect.left;
-      const ly = y - parentRect.top;
-      joyEl.style.left = `${lx - 40}px`;
-      joyEl.style.top = `${ly - 40}px`;
-      joyEl.style.width = "80px";
-      joyEl.style.height = "80px";
-      joyEl.style.borderRadius = "50%";
-      joyEl.style.border = "2px solid rgba(255, 255, 255, 0.3)";
-      joyEl.style.backgroundColor = "rgba(0, 0, 0, 0.2)";
-      joyEl.style.pointerEvents = "none";
-      joyEl.style.zIndex = "999";
-      
-      knobEl = document.createElement("div");
-      knobEl.style.position = "absolute";
-      knobEl.style.left = "25px";
-      knobEl.style.top = "25px";
-      knobEl.style.width = "30px";
-      knobEl.style.height = "30px";
-      knobEl.style.borderRadius = "50%";
-      knobEl.style.backgroundColor = "rgba(255, 255, 255, 0.5)";
-      knobEl.style.transition = "transform 0.05s linear";
-      
-      joyEl.appendChild(knobEl);
-      el.parentElement?.appendChild(joyEl);
-    };
-
-    const updateJoystick = (dx: number, dy: number) => {
-      if (!knobEl) return;
-      const dist = Math.hypot(dx, dy);
-      const maxDist = 40;
-      let rx = dx;
-      let ry = dy;
-      if (dist > maxDist) {
-        rx = (dx / dist) * maxDist;
-        ry = (dy / dist) * maxDist;
-      }
-      knobEl.style.transform = `translate(${rx}px, ${ry}px)`;
-    };
-
-    const hideJoystick = () => {
-      if (joyEl) {
-        joyEl.remove();
-        joyEl = null;
-        knobEl = null;
-      }
-    };
+    const joy = createJoystick(el);
 
     const down = (e: PointerEvent) => {
-      this.dragging = e.button === 2 || e.shiftKey ? 2 : 1;
+      // El arrastre secundario desplaza el centro, así que en órbita no existe:
+      // todo arrastre gira. La galaxia se queda donde está.
+      const pan = e.button === 2 || e.shiftKey;
+      this.dragging = pan && this.mode === 'fly' ? 2 : 1;
       this.joyStartX = e.clientX;
       this.joyStartY = e.clientY;
       this.joyCurX = e.clientX;
       this.joyCurY = e.clientY;
       this.joyActive = true;
       if (this.mode === 'fly') {
-        showJoystick(e.clientX, e.clientY);
+        joy.show(e.clientX, e.clientY);
       }
       el.setPointerCapture(e.pointerId);
     };
@@ -318,24 +287,16 @@ export class OrbitCamera {
       this.joyCurX = e.clientX;
       this.joyCurY = e.clientY;
       if (this.mode === 'fly') {
-        updateJoystick(this.joyCurX - this.joyStartX, this.joyCurY - this.joyStartY);
+        joy.update(this.joyCurX - this.joyStartX, this.joyCurY - this.joyStartY);
       } else {
-        if (this.dragging === 1) {
-          this.vTheta -= dx * 0.005;
-          this.vPhi -= dy * 0.005;
-        } else {
-          const { r, u } = this.basis();
-          const k = this.distance * 0.0016;
-          for (let i = 0; i < 3; i++) {
-            this.target[i] += (r[i] * dx - u[i] * dy) * k;
-          }
-        }
+        this.vTheta -= dx * 0.005;
+        this.vPhi -= dy * 0.005;
       }
     };
     const up = (e: PointerEvent) => {
       this.joyActive = false;
       this.dragging = 0;
-      hideJoystick();
+      joy.hide();
       el.releasePointerCapture?.(e.pointerId);
     };
     const wheel = (e: WheelEvent) => {
@@ -353,7 +314,7 @@ export class OrbitCamera {
     this.fly.onHome = () => this.goHome();
     this.fly.attach();
     this.detach = () => {
-      hideJoystick();
+      joy.hide();
       this.fly.dispose();
       el.removeEventListener("pointerdown", down);
       el.removeEventListener("pointermove", move);

@@ -42,3 +42,34 @@ export function tiers(g, id, out) {
   out[id] = HL.self;
   return out;
 }
+
+/** Lo mismo para un **camino** entre dos palabras.
+ *
+ *  Los nodos del camino van a `self` y sus vecinos directos a `ring2`. El
+ *  anillo no es adorno: sin él el camino son siete puntos brillantes colgando
+ *  del vacío, y lo que se quiere ver es por qué barrios pasa. Con él, cada
+ *  paso arrastra su vecindario y el color dice cuándo se cruza de región.
+ *
+ *  No hay `ring1` aquí a propósito: en la selección los vecinos directos son
+ *  los que lista la ficha y merecen un escalón propio; en un camino lo que
+ *  importa es la cadena, y un tercer nivel la enterraría.
+ *
+ * @param {import("./loader").Galaxy} g
+ * @param {number[] | null} path
+ * @param {Float32Array} out
+ */
+export function pathTiers(g, path, out) {
+  const { offsets, targets } = g;
+  if (!path || path.length === 0) {
+    out.fill(1);
+    return out;
+  }
+  out.fill(HL.rest);
+  for (const id of path) {
+    for (let j = offsets[id]; j < offsets[id + 1]; j++) out[targets[j]] = HL.ring2;
+  }
+  // Después del anillo: un nodo del camino que además sea vecino de otro no
+  // puede quedarse con el escalón de fuera.
+  for (const id of path) out[id] = HL.self;
+  return out;
+}

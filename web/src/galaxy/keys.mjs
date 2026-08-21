@@ -8,7 +8,13 @@
  *
  *  Las velocidades salen normalizadas: las de traslación son fracción de la
  *  distancia de órbita (avanzar cuesta lo mismo de cerca que de lejos), el giro
- *  va en radianes y el zoom es una fracción multiplicativa. */
+ *  va en radianes y el zoom es una fracción multiplicativa.
+ *
+ *  Es `.mjs` con JSDoc y no `.ts` por la misma razón que `palette.mjs` y
+ *  `highlight.mjs`: el paquete es `type: commonjs` y Node no carga un `.ts`
+ *  como módulo, mientras que `tsc` sí tipa un `.mjs`. Aquí el tacto entero —los
+ *  impulsos, la amortiguación, qué hace cada tecla en cada modo— es lógica pura
+ *  sin GPU ni DOM, así que es justo lo que un test puede fijar. */
 
 /** Impulsos por frame. Amortiguados a continuación, así que la velocidad
  *  sostenida es ~7× el impulso (0,86 de amortiguación → 1/(1−0,86)). */
@@ -36,42 +42,73 @@ const SWALLOW = new Set([
 /** ¿El foco está en un campo de texto? Entonces las teclas son del campo:
  *  después de buscar una palabra el cursor sigue en el input, y sin esto
  *  «wasd» se escribiría en el buscador en vez de mover la cámara. */
-function typing(el: EventTarget | null): boolean {
-  const n = el as HTMLElement | null;
+/**
+ * @param {EventTarget | null} el
+ * @returns {boolean}
+ */
+function typing(el) {
+  const n = /** @type {HTMLElement | null} */ (el);
   if (!n || !n.tagName) return false;
   return /^(INPUT|TEXTAREA|SELECT)$/.test(n.tagName) || n.isContentEditable;
 }
 
-export interface Fly {
-  /** Fracción de la distancia de órbita, por frame. */
-  fwd: number;
-  side: number;
-  vert: number;
-  /** Radianes de azimut y de polar. */
-  yaw: number;
-  pitch: number;
-  /** Fracción multiplicativa de la distancia. */
-  zoom: number;
-}
+/** Cómo se interpretan las teclas.
+ *
+ *  `orbit` es el modo de casa: la galaxia **no se mueve de sitio**. Todo lo que
+ *  hace el teclado es girar alrededor del centro y acercarse, así que el eje de
+ *  giro es siempre el mismo y la rotación se lee. Con traslación mezclada el
+ *  pivote se iba de la nube sin que se notara y el siguiente giro parecía
+ *  torcido — que es justo lo que se estaba arreglando.
+ *
+ *  `fly` es el modo libre: ahí sí se atraviesa la nube. */
+/** @typedef {"orbit" | "fly"} FlyMode */
+
+/**
+ * @typedef {object} Fly
+ * @property {number} fwd    fracción de la distancia de órbita, por frame. Siempre 0 en `orbit`.
+ * @property {number} side
+ * @property {number} vert
+ * @property {number} yaw    radianes de azimut
+ * @property {number} pitch  radianes de polar
+ * @property {number} zoom   fracción multiplicativa de la distancia
+ */
 
 export class KeyFly {
-  private keys = new Set<string>();
+  /** @type {Set<string>} */
+  keys = new Set();
+  /** En `orbit` no se emite traslación: ver `FlyMode`. */
+  /** @type {FlyMode} */
+  mode = "orbit";
   /** Multiplicador de los modificadores: Mayús acelera, Alt afina. */
-  private boost = 1;
-  private v: Fly = { fwd: 0, side: 0, vert: 0, yaw: 0, pitch: 0, zoom: 0 };
-  private detach: (() => void) | null = null;
+  boost = 1;
+  /** @type {Fly} */
+  v = { fwd: 0, side: 0, vert: 0, yaw: 0, pitch: 0, zoom: 0 };
+  /** @type {(() => void) | null} */
+  detach = null;
+
+  /** Cambiar de modo corta la inercia: la velocidad pendiente se integró con
+   *  el significado anterior de las teclas y al cambiarlo sale un tirón. */
+  /** @param {FlyMode} m */
+  setMode(m) {
+    if (m === this.mode) return;
+    this.mode = m;
+    this.stop();
+  }
 
   /** Qué hacer con Inicio. Lo pone quien tenga un encuadre al que volver. */
-  onHome: (() => void) | null = null;
+  /** @type {(() => void) | null} */
+  onHome = null;
 
   /** Los listeners van en `window`, no en el canvas: un canvas sin `tabindex`
    *  nunca recibe el foco, y pedir un clic previo para poder volar sería un
    *  misterio. Ctrl/Meta se dejan pasar: son atajos del navegador. */
   attach() {
-    const mods = (e: KeyboardEvent) => {
+    /** @param {KeyboardEvent} e */
+    const mods = (e) => {
       this.boost = (e.shiftKey ? 3 : 1) * (e.altKey ? 0.3 : 1);
     };
-    const down = (e: KeyboardEvent) => {
+    /** @param {KeyboardEvent} e */
+    const down = (e) => {
       if (e.ctrlKey || e.metaKey || typing(e.target)) return;
       mods(e);
       if (e.code === "Home") { this.onHome?.(); e.preventDefault(); return; }
@@ -79,7 +116,8 @@ export class KeyFly {
       this.keys.add(e.code);
       if (SWALLOW.has(e.code)) e.preventDefault();
     };
-    const up = (e: KeyboardEvent) => { mods(e); this.keys.delete(e.code); };
+    /** @param {KeyboardEvent} e */
+    const up = (e) => { mods(e); this.keys.delete(e.code); };
     // Sin esto, cambiar de pestaña con una tecla pulsada la deja trabada: el
     // keyup se lo queda la otra ventana y la cámara sigue volando sola.
     const blur = () => { this.keys.clear(); this.boost = 1; };
@@ -96,7 +134,8 @@ export class KeyFly {
   }
 
   /** ¿Hay algo que dibujar? Con teclas sueltas y sin inercia, el frame se salta. */
-  active(): boolean {
+  /** @returns {boolean} */
+  active() {
     if (this.keys.size) return true;
     const v = this.v;
     return Math.abs(v.fwd) > STILL || Math.abs(v.side) > STILL ||
@@ -107,21 +146,31 @@ export class KeyFly {
   /** Velocidad de este frame. Integra los impulsos de las teclas mantenidas y
    *  amortigua: soltar una tecla frena igual que soltar el botón del ratón.
    *  Se llama **una vez por frame**; el objeto devuelto se reutiliza. */
-  read(): Fly {
+  /** @returns {Fly} */
+  read() {
     const v = this.v;
     const k = this.keys;
     if (k.size) {
-      const on = (...codes: string[]) => (codes.some(c => k.has(c)) ? 1 : 0);
+      /** @param {...string} codes */
+      const on = (...codes) => (codes.some(c => k.has(c)) ? 1 : 0);
       const s = this.boost;
       // Girar: las flechas hacen lo mismo que arrastrar con el ratón.
       v.yaw += (on("ArrowLeft") - on("ArrowRight")) * ROT * s;
       v.pitch += (on("ArrowUp") - on("ArrowDown")) * ROT * s;
       v.zoom += (on("Minus", "NumpadSubtract") - on("Equal", "NumpadAdd")) * ZOOM * s;
-      // Volar: adelante es el eje de vista; subir y bajar, el eje del mundo,
-      // que es lo que una vista casi horizontal hace esperar.
-      v.fwd += (on("KeyW") - on("KeyS")) * MOVE * s;
-      v.side += (on("KeyD") - on("KeyA")) * MOVE * s;
-      v.vert += (on("KeyE", "PageUp") - on("KeyQ", "PageDown")) * MOVE * s;
+      if (this.mode === "orbit") {
+        // La galaxia se queda quieta: WASD giran igual que las flechas y
+        // Q/E alejan y acercan. Ninguna tecla toca el centro de la órbita.
+        v.yaw += (on("KeyA") - on("KeyD")) * ROT * s;
+        v.pitch += (on("KeyW") - on("KeyS")) * ROT * s;
+        v.zoom += (on("KeyQ", "PageDown") - on("KeyE", "PageUp")) * ZOOM * s;
+      } else {
+        // Volar: adelante es el eje de vista; subir y bajar, el eje del mundo,
+        // que es lo que una vista casi horizontal hace esperar.
+        v.fwd += (on("KeyW") - on("KeyS")) * MOVE * s;
+        v.side += (on("KeyD") - on("KeyA")) * MOVE * s;
+        v.vert += (on("KeyE", "PageUp") - on("KeyQ", "PageDown")) * MOVE * s;
+      }
     }
     const out = { ...v };
     v.fwd *= DAMP; v.side *= DAMP; v.vert *= DAMP;

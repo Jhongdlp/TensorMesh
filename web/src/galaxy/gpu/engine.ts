@@ -1,6 +1,6 @@
 import type { Galaxy } from "../loader";
 import { zoneColours } from "../palette.mjs";
-import { HL, tiers } from "../highlight.mjs";
+import { HL, tiers, pathTiers } from "../highlight.mjs";
 import { OrbitCamera } from "./camera";
 import physicsWGSL from "./physics.wgsl?raw";
 import renderWGSL from "./render.wgsl?raw";
@@ -64,6 +64,14 @@ const MAX_STEPS = 6;
  *  del anillo ocupe 256 bytes para 48 de contenido. */
 const UNI_ALIGN = 256;
 const PICK_RADIUS = 20;
+
+/** Tope de nodos que el encuadre de un camino lee de vuelta a la CPU.
+ *
+ *  Un camino en un grafo kNN de 50.000 nodos es de mundo pequeño: casi siempre
+ *  cabe en menos de diez saltos. El tope está para que el invariante —las
+ *  posiciones no vuelven a la CPU— no dependa de que el grafo se porte bien:
+ *  1 KB de lectura y sólo al pedir un camino, no por frame. */
+const PATH_MAX = 64;
 const DEPTH: GPUTextureFormat = "depth16unorm";
 
 export async function gpuAvailable(): Promise<GPUDevice | null> {
@@ -114,6 +122,8 @@ export class GpuEngine {
   private pickOut: GPUBuffer;
   private pickStage: GPUBuffer;
   private oneStage: GPUBuffer;
+  /** Encuadre de un camino: hasta `PATH_MAX` posiciones en una sola lectura. */
+  private manyStage: GPUBuffer;
   private cullU: GPUBuffer;
   private drawArgs: GPUBuffer;
   private argsStage: GPUBuffer;
@@ -264,6 +274,8 @@ export class GpuEngine {
     this.pickOut = device.createBuffer({ size: 4, usage: B.STORAGE | B.COPY_SRC | B.COPY_DST });
     this.pickStage = device.createBuffer({ size: 4, usage: B.MAP_READ | B.COPY_DST });
     this.oneStage = device.createBuffer({ size: 16, usage: B.MAP_READ | B.COPY_DST });
+    this.manyStage = device.createBuffer({ size: PATH_MAX * 16,
+                                           usage: B.MAP_READ | B.COPY_DST });
     this.cullU = device.createBuffer({ size: 96, usage: B.UNIFORM | B.COPY_DST });
     this.drawArgs = device.createBuffer({
       size: 32, usage: B.INDIRECT | B.STORAGE | B.COPY_DST | B.COPY_SRC,
@@ -444,12 +456,17 @@ export class GpuEngine {
     // el núcleo (distancia ≈ 0) la bruma colapse a un plano.
     const fogSpan = Math.max(this.camera.distance, this.radius * 0.35) * 2.3;
     const fogNear = this.camera.distance - fogSpan * 0.45;
-    new Float32Array(buf, 80, 11).set([
+    // Longitud de referencia para la exposición de las aristas (ver `expose` en
+    // render.wgsl). Va en unidades de mundo y atada al radio de la nube, no a la
+    // cámara: lo que se corrige es cuánta tinta merece cada relación, y eso es
+    // una propiedad del grafo — no cambia porque uno se acerque.
+    const edgeRef = this.radius * 0.16;
+    new Float32Array(buf, 80, 12).set([
       proj[0], proj[5], fogNear, 1.0,
       edgeB, this.params.minPx * dpr, w, h,
       2.5,   // selScale: el elegido crece ×6 y sus vecinos ×3,4, y con ello sube
              // también su suelo en píxeles: siempre localizable, aun de lejos
-      selEdge, fogSpan,
+      selEdge, fogSpan, edgeRef,
     ]);
     this.device.queue.writeBuffer(this.renderU, 0, buf);
   }
@@ -636,7 +653,15 @@ export class GpuEngine {
   };
 
   setCameraMode(mode: 'orbit' | 'fly') {
-    this.camera.mode = mode;
+    this.camera.setMode(mode);
+    this.dirty = true;
+  }
+
+  /** Vista completa. Es la tecla `Inicio` en forma de método: la barra de
+   *  herramientas la necesita, y estar sólo en el teclado la dejaba invisible
+   *  para quien no abre la leyenda. */
+  goHome() {
+    this.camera.goHome();
     this.dirty = true;
   }
 
@@ -648,6 +673,22 @@ export class GpuEngine {
     tiers(this.g, id, this.dimHost);
     this.device.queue.writeBuffer(this.dim, 0, this.dimHost);
     this.hoverId = null;   // la escritura entera se llevó por delante el hover
+    this.dirty = true;
+  }
+
+  /** Resalte de un camino. Mismo canal `dim` y misma escritura de 200 KB que
+   *  `select`: no hay buffers nuevos porque el camino no es un objeto, es otro
+   *  reparto de los mismos escalones. Las aristas de la cadena se encienden
+   *  solas — heredan el resalte de sus dos extremos en el vertex shader — y
+   *  quedan exentas del adelgazamiento de la malla por la regla de `cullEdges`
+   *  (`hl > 1`), así que el camino nunca se ve a trozos. */
+  selectPath(path: number[] | null) {
+    // El extremo es lo que sigue «seleccionado» para el hover: pasar el ratón
+    // por encima de un nodo del camino no debe rebajarlo.
+    this.selected = path && path.length ? path[path.length - 1] : null;
+    pathTiers(this.g, path, this.dimHost);
+    this.device.queue.writeBuffer(this.dim, 0, this.dimHost);
+    this.hoverId = null;
     this.dirty = true;
   }
 
@@ -728,6 +769,43 @@ export class GpuEngine {
       // Unas cuantas longitudes de arista: el vecindario llena el encuadre sin
       // quedarse pegado a la cara.
       this.camera.flyTo([p[0], p[1], p[2]], this.meanEdge * 5);
+      this.dirty = true;
+    });
+  }
+
+  /** Encuadra un camino entero: centroide de sus nodos y radio que los cubre.
+   *
+   *  Enfocar sólo el destino, que es lo barato, deja el camino saliendo por
+   *  detrás de la cámara — y el camino es justo lo que se ha pedido ver. Aquí
+   *  el invariante se paga con `PATH_MAX × 16` bytes, una vez por consulta.
+   *
+   *  El radio sale de la distancia máxima al centroide, no de la envolvente:
+   *  es la misma decisión que el encuadre inicial, y por lo mismo — un extremo
+   *  lejano no debe dejar el resto del camino diminuto en el centro. */
+  focusPath(path: number[]): Promise<void> {
+    const ids = path.slice(0, PATH_MAX);
+    return this.queue(async () => {
+      const enc = this.device.createCommandEncoder();
+      ids.forEach((id, k) => {
+        enc.copyBufferToBuffer(this.pos[this.cur], id * 16, this.manyStage, k * 16, 16);
+      });
+      this.device.queue.submit([enc.finish()]);
+      await this.manyStage.mapAsync(GPUMapMode.READ, 0, ids.length * 16);
+      const p = new Float32Array(this.manyStage.getMappedRange(0, ids.length * 16).slice(0));
+      this.manyStage.unmap();
+
+      let cx = 0, cy = 0, cz = 0;
+      for (let k = 0; k < ids.length; k++) {
+        cx += p[k * 4]; cy += p[k * 4 + 1]; cz += p[k * 4 + 2];
+      }
+      cx /= ids.length; cy /= ids.length; cz /= ids.length;
+
+      let far = 0;
+      for (let k = 0; k < ids.length; k++) {
+        far = Math.max(far, Math.hypot(p[k * 4] - cx, p[k * 4 + 1] - cy, p[k * 4 + 2] - cz));
+      }
+      // Con un solo nodo el radio es cero: se cae al encuadre de `focus`.
+      this.camera.flyTo([cx, cy, cz], Math.max(far * 1.35, this.meanEdge * 5));
       this.dirty = true;
     });
   }

@@ -363,9 +363,9 @@ function setCamera(zoom, at = null, dist0 = null) {
   // Mismo tramo de bruma que `engine.ts:writeRender`. Si se toca allí hay que
   // tocarlo aquí, o el PNG deja de representar lo que ve la web.
   const fogSpan = Math.max(dist, radius * 0.35) * 2.3;
-  new Float32Array(ru, 80, 11).set([
+  new Float32Array(ru, 80, 12).set([
     proj[0], proj[5], dist - fogSpan * 0.45, 1.0, edgeB / KEEP, 2.0, W, H,
-    SEL_SCALE, SEL_EDGE, fogSpan,
+    SEL_SCALE, SEL_EDGE, fogSpan, radius * 0.16,
   ]);
   device.queue.writeBuffer(rendU, 0, ru);
 }
@@ -587,6 +587,29 @@ if (SEL >= 0) {
   await device.queue.onSubmittedWorkDone();
   console.log(`  selección   nodo ${SEL} · grado ${deg} · ${focus ? "enfocado" : "vista completa"} · ` +
               `arista media ${meanEdge.toFixed(0)} · escala ${SEL_SCALE} · brillo ${SEL_EDGE}`);
+  {
+    // Contadores del descarte con esta cámara: si el enfoque llegó, caen mucho.
+    const e3 = device.createCommandEncoder();
+    e3.copyBufferToBuffer(drawArgs, 0, argsStage, 0, 32);
+    device.queue.submit([e3.finish()]);
+    await argsStage.mapAsync(GPUMapMode.READ);
+    const a3 = new Uint32Array(argsStage.getMappedRange().slice(0));
+    argsStage.unmap();
+    console.log(`  visibles    ${a3[1]} nodos · ${a3[4] / 2} aristas`);
+  }
+  {
+    // Captura propia: la del final vuelve a dibujar y pisaba este estado.
+    const e4 = device.createCommandEncoder();
+    e4.copyTextureToBuffer({ texture: tex },
+      { buffer: readBuf, bytesPerRow: W * 4, rowsPerImage: H }, [W, H]);
+    device.queue.submit([e4.finish()]);
+    await readBuf.mapAsync(GPUMapMode.READ);
+    const sp = Buffer.from(new Uint8Array(readBuf.getMappedRange()).slice(0));
+    readBuf.unmap();
+    const so = join(HERE, "..", "..", "data", `sel_${LANG}.png`);
+    writeFileSync(so, png(W, H, sp));
+    console.log(`  captura     ${so}`);
+  }
   console.log(`  cámara      nodo en [${np[0].toFixed(0)}, ${np[1].toFixed(0)}, ${np[2].toFixed(0)}] · ` +
               `centro [${cx.toFixed(0)}, ${cy.toFixed(0)}, ${cz.toFixed(0)}] · ` +
               `dist ${(meanEdge*5).toFixed(0)} vs base ${baseDist.toFixed(0)} · ojo [${eye.map(v=>v.toFixed(0)).join(", ")}]`);

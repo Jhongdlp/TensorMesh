@@ -1,5 +1,5 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": { "noEmit": true, "skipLibCheck": true },
-  "include": ["src/galaxy/**/*.ts", "src/components/**/*.tsx"]
+  "include": ["src/galaxy/**/*.ts", "src/galaxy/**/*.mjs", "src/components/**/*.tsx"]
 }

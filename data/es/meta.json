@@ -6,5 +6,6 @@
   "posScale": 0.18569717407226563,
   "communities": 28,
   "stopwords": 107,
-  "generated": "2026-08-20T16:13:06"
+  "generated": "2026-08-20T16:13:06",
+  "dims": 300
 }

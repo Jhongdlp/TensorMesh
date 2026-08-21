@@ -91,7 +91,18 @@ puede tener contexto WebGL y WebGPU a la vez). Ambos cumplen la interfaz `Viewer
 El teclado vive en `galaxy/keys.ts` (`KeyFly`) precisamente porque cada motor
 tiene su propia cámara — `gpu/camera.ts` una a mano, `scene.ts` la de Three.js —
 y meterlo dentro de una de las dos dejaba al otro motor sin teclas, que es lo que
-pasó la primera vez. `KeyFly` sólo devuelve velocidades **normalizadas**
+pasó la primera vez.
+
+`KeyFly` tiene **dos modos** y el motor se los pasa con `setMode`: en `orbit`
+—el de casa— **la galaxia no se mueve de sitio**, ninguna tecla ni arrastre toca
+el centro de la órbita (WASD giran igual que las flechas, Q/E alejan y acercan) y
+el paneo con botón derecho está desactivado; en `fly` se suelta la cámara y WASD
+trasladan. El pivote a la deriva era lo que hacía que el siguiente giro pareciese
+torcido. El clamp del polo es `EPS = 0.035` rad en los dos motores, no `1e-4`:
+con la vista paralela al `up` fijo el `lookAt` degenera y la imagen daba un giro
+salvaje justo al llegar arriba o abajo.
+
+`KeyFly` sólo devuelve velocidades **normalizadas**
 (fracción de la distancia de órbita, radianes, fracción de zoom) ya amortiguadas;
 cada motor las traduce a su sistema. Ahí está también el tacto: los impulsos, la
 amortiguación de 0,86 —la misma que el ratón—, el filtro de foco en un `<input>`

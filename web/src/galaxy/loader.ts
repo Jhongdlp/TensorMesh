@@ -28,14 +28,37 @@ export interface Galaxy {
   uniqueEdges: Uint32Array;
 }
 
+/** Peticiones que el `<script is:inline>` de `index.astro` ya lanzó antes de
+ *  que existiera React. Ver el comentario de allí: se pasan como promesa y no
+ *  como `<link rel=preload>` para no arriesgar una segunda descarga. */
+declare global {
+  interface Window { __atlas?: Record<string, Promise<Response | null>> }
+}
+
+/** La respuesta ya en marcha si la hay, y si no una nueva.
+ *
+ *  Sólo sirve una vez por URL: un `Response` no se puede leer dos veces, así
+ *  que la entrada se consume al usarla. Cambiar de idioma y volver vuelve a
+ *  pedir el archivo — que es lo correcto, porque la caché HTTP ya lo tiene. */
+function req(url: string): Promise<Response | null> {
+  const pre = typeof window !== "undefined" ? window.__atlas : undefined;
+  const hit = pre?.[url];
+  if (hit) { delete pre![url]; return hit; }
+  return fetch(url);
+}
+
 async function buf(url: string): Promise<ArrayBuffer> {
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`${url} → ${r.status}`);
+  const r = await req(url);
+  if (!r || !r.ok) throw new Error(`${url} → ${r ? r.status : "sin respuesta"}`);
   return r.arrayBuffer();
 }
 
 export async function loadGalaxy(base: string): Promise<Galaxy> {
-  const meta: Meta = await (await fetch(`${base}/meta.json`)).json();
+  const metaRes = await req(`${base}/meta.json`);
+  if (!metaRes || !metaRes.ok) {
+    throw new Error(`${base}/meta.json → ${metaRes ? metaRes.status : "sin respuesta"}`);
+  }
+  const meta: Meta = await metaRes.json();
   const n = meta.nodes;
 
   const [posB, edgeB, labB, attrB] = await Promise.all([

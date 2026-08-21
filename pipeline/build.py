@@ -32,6 +32,10 @@ STOP = {
         has him two more could been now than who its into only over such most our any may who""",
 }
 
+#: Dimensiones del vector fastText. `pipeline/vectors.py` las publica y
+#: `web/src/galaxy/vectors.ts` las lee de `meta.json` para calcular el offset.
+VEC_DIMS = 300
+
 WORD_RE = {
     "es": re.compile(r"^[a-záéíóúüñ]+$"),
     "en": re.compile(r"^[a-z]+$"),
@@ -339,6 +343,10 @@ def pack(lang, words, pos, es, ed, ew, comm, n_comm, flags, ranks):
     meta = {
         "lang": lang, "nodes": n, "edges": m, "csr": 2 * m,
         "posScale": peak / 32000.0, "communities": n_comm,
+        # Tamaño del registro de `vecs.bin`, que lo escribe otra etapa. Vive
+        # aquí porque el lector del navegador lo necesita *antes* de pedir su
+        # primer rango de bytes, y `meta.json` es lo único que lee entero.
+        "dims": VEC_DIMS,
         "stopwords": int(flags.sum()), "generated": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
     (d / "meta.json").write_text(json.dumps(meta, indent=2))

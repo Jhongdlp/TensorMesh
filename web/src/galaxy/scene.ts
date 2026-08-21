@@ -1,8 +1,9 @@
 import * as THREE from "three";
 import type { Galaxy } from "./loader";
 import { zoneColours } from "./palette.mjs";
-import { HL, tiers } from "./highlight.mjs";
-import { KeyFly } from "./keys";
+import { HL, tiers, pathTiers } from "./highlight.mjs";
+import { KeyFly, type FlyMode } from "./keys.mjs";
+import { createJoystick } from "./joystick";
 
 /** Cuánto crece un nodo resaltado, igual que `selScale` en el motor WebGPU. */
 const SEL_SCALE = 2.5;
@@ -10,6 +11,25 @@ const SEL_SCALE = 2.5;
  *  se deduce del brillo de la malla: lleva la arista a color pleno y ni un paso
  *  más, porque pasarse recorta los tres canales y el camino sale blanco. */
 const selEdgeFor = (bright: number) => Math.min(24, (1 / Math.max(bright, 1e-3) - 1) / (HL.self - 1));
+
+/** Bruma y exposición: espejo de `gpu/render.wgsl`. Los valores se duplican a
+ *  mano porque un `.wgsl` no se importa desde GLSL; si se tocan allí, aquí
+ *  también, o los dos motores dejan de verse igual. El razonamiento completo
+ *  está en render.wgsl — aquí sólo los números. */
+const FOG_FLOOR = 0.18;
+const FOG_HAZE = "vec3(0.09, 0.13, 0.26)";
+const EXP_SOFT = 0.65, EXP_FLOOR = 0.1, EXP_REF = 0.16;   // EXP_REF, en radios
+
+/** Perspectiva aérea, compartida por los dos shaders. El tramo lo fija la órbita
+ *  y no el radio de la nube: así el centro de la vista queda siempre a media
+ *  bruma y el relieve se lee igual de cerca que de lejos. */
+const FOG_GLSL = /* glsl */ `
+  uniform float uFogNear;
+  uniform float uFogSpan;
+  float fogT(float d) {
+    float t = clamp((d - uFogNear) / uFogSpan, 0.0, 1.0);
+    return t * t * (3.0 - 2.0 * t);
+  }`;
 
 const NODE_VERT = /* glsl */ `
   attribute float aSize;
@@ -20,6 +40,7 @@ const NODE_VERT = /* glsl */ `
   uniform float uSelScale;
   varying float vFade;
   varying float vBoost;
+  ${FOG_GLSL}
   void main() {
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
     gl_Position = projectionMatrix * mv;
@@ -48,9 +69,15 @@ const NODE_VERT = /* glsl */ `
     vBoost = max(aDim - 1.0, 0.0);
     float att = min(aDim, 1.0);
     float grow = (1.0 + vBoost * uSelScale) * mix(0.4, 1.0, att);
-    gl_PointSize = max(aSize * uScale / d, uMinPx) * grow;
+    // El suelo en píxeles cede con la bruma: al fondo un nodo debe ser una mota,
+    // no un disco. Con el suelo plano los 50.000 salían del mismo tamaño y el
+    // fondo era confeti blanco de densidad constante que tapa la malla y no dice
+    // nada. Los resaltados van exentos: hay que poder apuntarlos de lejos.
+    float t = fogT(d);
+    float relax = vBoost > 0.0 ? 0.0 : t;
+    gl_PointSize = max(aSize * uScale / d, uMinPx * mix(1.0, 0.35, relax)) * grow;
     // Suelo del 12%: el fondo a cero deja la selección flotando en el vacío.
-    vFade = clamp(1.0 - d / uFar, 0.04, 1.0) * mix(0.12, 1.0, att);
+    vFade = mix(1.0, ${FOG_FLOOR}, t) * mix(0.12, 1.0, att);
   }`;
 
 const NODE_FRAG = /* glsl */ `
@@ -80,25 +107,39 @@ const NODE_FRAG = /* glsl */ `
 const EDGE_VERT = /* glsl */ `
   attribute vec3 aColor;
   attribute float aDim;
+  // Factor de exposición, ya resuelto en CPU (ver buildEdges). Aquí sale más
+  // barato que en WebGPU: allí hay que leer el otro extremo del storage buffer
+  // por vértice, mientras que la longitud de una arista no cambia nunca — se
+  // calcula una vez al construir la geometría y viaja como atributo.
+  attribute float aExp;
   uniform float uFar;
   uniform float uSelEdge;
   varying vec3 vColor;
   varying float vFade;
   varying float vGain;
+  varying float vBoost;
+  ${FOG_GLSL}
   void main() {
-    vColor = aColor;
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
     gl_Position = projectionMatrix * mv;
     // El empujón del resalte va en el color, no en el alfa: el factor de mezcla
     // se recorta a 1 y multiplicarlo no subiría nada.
-    vGain = 1.0 + max(aDim - 1.0, 0.0) * uSelEdge;
+    vBoost = max(aDim - 1.0, 0.0);
+    vGain = 1.0 + vBoost * uSelEdge;
     
     // Descarte por distancia para aristas lejanas
     float d = max(-mv.z, 1.0);
+    float t = fogT(d);
+    // La malla del fondo se va hacia el azul del aire; la de delante conserva su
+    // zona. El azul es oscuro a propósito: el blending es aditivo y una bruma
+    // clara *sumaría* luz a las aristas en vez de alejarlas.
+    vColor = mix(aColor, ${FOG_HAZE}, t * 0.45);
     if (aDim <= 1.0 && d > uFar) {
       vFade = 0.0;
     } else {
-      vFade = clamp(1.0 - d / uFar, 0.0, 1.0) * min(aDim, 1.0);
+      // aExp normaliza la tinta por longitud; el camino resaltado va exento.
+      float ex = aDim > 1.0 ? 1.0 : aExp;
+      vFade = mix(1.0, ${FOG_FLOOR}, t) * min(aDim, 1.0) * ex;
     }
   }`;
 
@@ -107,10 +148,19 @@ const EDGE_FRAG = /* glsl */ `
   varying vec3 vColor;
   varying float vFade;
   varying float vGain;
+  varying float vBoost;
   void main() {
     if (vFade <= 0.005) discard;
-    gl_FragColor = vec4(vColor * uBright * vGain, vFade);
+    // El camino cambia tono de zona por visibilidad: un hilo de un píxel con el
+    // color de su zona es invisible sobre negro. Igual que en render.wgsl.
+    vec3 lit = vColor * uBright * vGain;
+    gl_FragColor = vec4(mix(lit, vec3(1.0), clamp(vBoost * 0.6, 0.0, 0.85)), vFade);
   }`;
+
+/** Margen del polo, igual que en `gpu/camera.ts`: con la vista casi paralela al
+ *  `up` fijo, `lookAt` degenera y la imagen pega un giro salvaje al llegar
+ *  arriba o abajo. Dos grados bastan para que el tope se sienta como un tope. */
+const EPS = 0.035;
 
 /** Vectores de trabajo: el bucle corre 60 veces por segundo y no debe asignar. */
 const SCRATCH = {
@@ -136,7 +186,10 @@ export class GalaxyScene {
   private theta = 0;
   private phi = Math.PI / 2;
 
-  private cameraMode: 'orbit' | 'fly' = 'orbit';
+  /** `orbit`: el centro de la órbita **no se mueve**, ni con teclas ni con el
+   *  ratón — la galaxia se queda quieta y sólo se gira alrededor de ella.
+   *  `fly`: cámara libre con joystick. */
+  private cameraMode: FlyMode = 'orbit';
   private joyActive = false;
   private joyStartX = 0;
   private joyStartY = 0;
@@ -146,6 +199,13 @@ export class GalaxyScene {
   private vDist = 0;
   private vTheta = 0;
   private vPhi = 0;
+  /** Vuelo en curso hacia una palabra o un camino. Misma interpolación que el
+   *  motor WebGPU (k = 0,14): enfocar es parte del gesto de seleccionar, y sin
+   *  ella el respaldo teletransportaba la cámara. */
+  private flyTarget: THREE.Vector3 | null = null;
+  private flyDistance = 0;
+  /** Longitud media de arista: la unidad con la que se encuadra un vecindario. */
+  private meanEdge = 1;
   private detach: (() => void) | null = null;
 
   /** Mismo vuelo con teclado que el motor WebGPU: es el módulo compartido el
@@ -189,20 +249,29 @@ export class GalaxyScene {
     this.camera.position.copy(this.eye());
     this.camera.lookAt(this.target);
 
+    // Muestreo, no el barrido entero: con 147.000 aristas la media se estima
+    // igual de bien con una de cada diez y el arranque no se nota.
+    {
+      const m = g.uniqueEdges.length / 2;
+      const stride = Math.max(1, Math.floor(m / 20000));
+      let sum = 0, count = 0;
+      for (let e = 0; e < m; e += stride) {
+        const a = g.uniqueEdges[e * 2], b = g.uniqueEdges[e * 2 + 1];
+        sum += Math.hypot(g.positions[a * 3] - g.positions[b * 3],
+                          g.positions[a * 3 + 1] - g.positions[b * 3 + 1],
+                          g.positions[a * 3 + 2] - g.positions[b * 3 + 2]);
+        count++;
+      }
+      this.meanEdge = count ? sum / count : this.radius * 0.1;
+    }
+
     this.home = {
       target: this.target.clone(),
       distance: this.distance,
       theta: this.theta,
       phi: this.phi
     };
-    this.fly.onHome = () => {
-      this.fly.stop();   // sin esto la inercia sigue derivando tras aterrizar
-      this.target.copy(this.home.target);
-      this.distance = this.home.distance;
-      this.theta = this.home.theta;
-      this.phi = this.home.phi;
-      this.vDist = 0;
-    };
+    this.fly.onHome = () => this.goHome();
     this.fly.attach();
     this.attach(canvas);
 
@@ -214,8 +283,26 @@ export class GalaxyScene {
     this.loop();
   }
 
-  setCameraMode(mode: 'orbit' | 'fly') {
+  /** Vista completa. Método y no un cierre dentro de `onHome` porque ahora
+   *  tiene dos disparadores: la tecla `Inicio` y el botón de la barra. El
+   *  nombre lleva `go` porque `home` ya es el estado guardado del encuadre. */
+  goHome() {
+    this.fly.stop();   // sin esto la inercia sigue derivando tras aterrizar
+    this.flyTarget = null;   // ni un vuelo pendiente tirando hacia otro sitio
+    this.target.copy(this.home.target);
+    this.distance = this.home.distance;
+    this.theta = this.home.theta;
+    this.phi = this.home.phi;
+    this.vDist = 0;
+  }
+
+  setCameraMode(mode: FlyMode) {
+    if (mode === this.cameraMode) return;
     this.cameraMode = mode;
+    // El teclado tiene que enterarse: si no, WASD seguiría trasladando.
+    this.fly.setMode(mode);
+    this.dragging = 0;
+    this.joyActive = false;
   }
 
   // ------------------------------------------------------------------ nodos
@@ -242,6 +329,7 @@ export class GalaxyScene {
         uScale: { value: 800 }, uMinPx: { value: 4.0 },
         uFar: { value: this.radius * 5.0 }, uBright: { value: 1.0 },
         uSelScale: { value: SEL_SCALE },
+        uFogNear: { value: 0 }, uFogSpan: { value: this.radius },
       },
       // Mezcla alfa y profundidad: un punto es un punto sólido, y el cercano
       // tapa al lejano en vez de sumarse con él hasta saturar.
@@ -260,6 +348,8 @@ export class GalaxyScene {
     const pos = new Float32Array(m * 6);
     const col = new Float32Array(m * 6);
     const dim = new Float32Array(m * 2).fill(1);
+    const exp = new Float32Array(m * 2);
+    const ref = this.radius * EXP_REF;
 
     for (let e = 0; e < m; e++) {
       const a = uniqueEdges[e * 2], b = uniqueEdges[e * 2 + 1];
@@ -267,6 +357,18 @@ export class GalaxyScene {
         pos[e * 6 + k] = positions[a * 3 + k];
         pos[e * 6 + 3 + k] = positions[b * 3 + k];
       }
+      // Exposición: el aditivo suma luz *por píxel rasterizado*, así que una
+      // arista larga aporta muchísima más tinta que una corta contando la misma
+      // relación kNN. En esta nube el 7% de las aristas más largas pone el 37%
+      // de la tinta. Se normaliza a partir de `ref` para que cada relación pese
+      // parecido; el suelo evita borrar los radios del todo.
+      const dx = positions[a * 3] - positions[b * 3];
+      const dy = positions[a * 3 + 1] - positions[b * 3 + 1];
+      const dz = positions[a * 3 + 2] - positions[b * 3 + 2];
+      const len = Math.hypot(dx, dy, dz);
+      const ex = Math.max((ref / Math.max(ref, len)) ** EXP_SOFT, EXP_FLOOR);
+      exp[e * 2] = ex;
+      exp[e * 2 + 1] = ex;
       for (let k = 0; k < 3; k++) {
         col[e * 6 + k] = zone[a * 3 + k];
         col[e * 6 + 3 + k] = zone[b * 3 + k];
@@ -276,6 +378,7 @@ export class GalaxyScene {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
     geo.setAttribute("aColor", new THREE.BufferAttribute(col, 3));
+    geo.setAttribute("aExp", new THREE.BufferAttribute(exp, 1));
     this.edgeDim = new THREE.BufferAttribute(dim, 1);
     geo.setAttribute("aDim", this.edgeDim);
 
@@ -285,6 +388,7 @@ export class GalaxyScene {
         uFar: { value: this.radius * 5.0 },
         uBright: { value: Math.min(0.34, 0.34 * 15949 / m) },
         uSelEdge: { value: selEdgeFor(Math.min(0.34, 0.34 * 15949 / m)) },
+        uFogNear: { value: 0 }, uFogSpan: { value: this.radius },
       },
       transparent: true, depthWrite: false, depthTest: true,
       blending: THREE.AdditiveBlending,
@@ -296,13 +400,23 @@ export class GalaxyScene {
   // --------------------------------------------------------------- selección
   select(id: number | null) {
     this.selected = id;
+    tiers(this.g, id, this.nodeDim.array as Float32Array);
+    this.spreadDim();
+  }
+
+  /** Resalte de un camino. Ver `pathTiers`: mismos escalones, otro reparto. */
+  selectPath(path: number[] | null) {
+    this.selected = path && path.length ? path[path.length - 1] : null;
+    pathTiers(this.g, path, this.nodeDim.array as Float32Array);
+    this.spreadDim();
+  }
+
+  /** Sin storage buffers, cada extremo de arista lleva su copia del escalón:
+   *  el mismo degradado que el motor WebGPU saca gratis en el vertex shader. */
+  private spreadDim() {
     const { uniqueEdges } = this.g;
     const nd = this.nodeDim.array as Float32Array;
     const ed = this.edgeDim.array as Float32Array;
-
-    // Sin storage buffers, cada extremo de arista lleva su copia del escalón:
-    // el mismo degradado que el motor WebGPU saca gratis en el vertex shader.
-    tiers(this.g, id, nd);
     for (let e = 0; e < uniqueEdges.length / 2; e++) {
       ed[e * 2] = nd[uniqueEdges[e * 2]];
       ed[e * 2 + 1] = nd[uniqueEdges[e * 2 + 1]];
@@ -378,70 +492,20 @@ export class GalaxyScene {
   }
 
   private attach(el: HTMLCanvasElement) {
-    let joyEl: HTMLDivElement | null = null;
-    let knobEl: HTMLDivElement | null = null;
-
-    const showJoystick = (x: number, y: number) => {
-      joyEl = document.createElement("div");
-      joyEl.style.position = "absolute";
-      const rect = el.getBoundingClientRect();
-      const parentRect = el.parentElement?.getBoundingClientRect() || rect;
-      const lx = x - parentRect.left;
-      const ly = y - parentRect.top;
-      joyEl.style.left = `${lx - 40}px`;
-      joyEl.style.top = `${ly - 40}px`;
-      joyEl.style.width = "80px";
-      joyEl.style.height = "80px";
-      joyEl.style.borderRadius = "50%";
-      joyEl.style.border = "2px solid rgba(255, 255, 255, 0.3)";
-      joyEl.style.backgroundColor = "rgba(0, 0, 0, 0.2)";
-      joyEl.style.pointerEvents = "none";
-      joyEl.style.zIndex = "999";
-      
-      knobEl = document.createElement("div");
-      knobEl.style.position = "absolute";
-      knobEl.style.left = "25px";
-      knobEl.style.top = "25px";
-      knobEl.style.width = "30px";
-      knobEl.style.height = "30px";
-      knobEl.style.borderRadius = "50%";
-      knobEl.style.backgroundColor = "rgba(255, 255, 255, 0.5)";
-      knobEl.style.transition = "transform 0.05s linear";
-      
-      joyEl.appendChild(knobEl);
-      el.parentElement?.appendChild(joyEl);
-    };
-
-    const updateJoystick = (dx: number, dy: number) => {
-      if (!knobEl) return;
-      const dist = Math.hypot(dx, dy);
-      const maxDist = 40;
-      let rx = dx;
-      let ry = dy;
-      if (dist > maxDist) {
-        rx = (dx / dist) * maxDist;
-        ry = (dy / dist) * maxDist;
-      }
-      knobEl.style.transform = `translate(${rx}px, ${ry}px)`;
-    };
-
-    const hideJoystick = () => {
-      if (joyEl) {
-        joyEl.remove();
-        joyEl = null;
-        knobEl = null;
-      }
-    };
+    const joy = createJoystick(el);
 
     const down = (e: PointerEvent) => {
-      this.dragging = e.button === 2 || e.shiftKey ? 2 : 1;
+      // El arrastre secundario desplaza el centro, así que en órbita no existe:
+      // todo arrastre gira. La galaxia se queda donde está.
+      const pan = e.button === 2 || e.shiftKey;
+      this.dragging = pan && this.cameraMode === 'fly' ? 2 : 1;
       this.joyStartX = e.clientX;
       this.joyStartY = e.clientY;
       this.joyCurX = e.clientX;
       this.joyCurY = e.clientY;
       this.joyActive = true;
       if (this.cameraMode === 'fly') {
-        showJoystick(e.clientX, e.clientY);
+        joy.show(e.clientX, e.clientY);
       }
       el.setPointerCapture(e.pointerId);
     };
@@ -452,25 +516,16 @@ export class GalaxyScene {
       this.joyCurX = e.clientX;
       this.joyCurY = e.clientY;
       if (this.cameraMode === 'fly') {
-        updateJoystick(this.joyCurX - this.joyStartX, this.joyCurY - this.joyStartY);
+        joy.update(this.joyCurX - this.joyStartX, this.joyCurY - this.joyStartY);
       } else {
-        if (this.dragging === 1) {
-          this.vTheta -= dx * 0.005;
-          this.vPhi -= dy * 0.005;
-        } else {
-          const e = this.eye();
-          const f = new THREE.Vector3().subVectors(this.target, e).normalize();
-          const r = new THREE.Vector3(-f.z, 0, f.x).normalize();
-          const u = new THREE.Vector3().crossVectors(r, f).normalize();
-          const k = this.distance * 0.0016;
-          this.target.addScaledVector(r, dx * k).addScaledVector(u, -dy * k);
-        }
+        this.vTheta -= dx * 0.005;
+        this.vPhi -= dy * 0.005;
       }
     };
     const up = (e: PointerEvent) => {
       this.joyActive = false;
       this.dragging = 0;
-      hideJoystick();
+      joy.hide();
       el.releasePointerCapture?.(e.pointerId);
     };
     const wheel = (e: WheelEvent) => {
@@ -487,7 +542,7 @@ export class GalaxyScene {
     el.addEventListener("contextmenu", menu);
 
     this.detach = () => {
-      hideJoystick();
+      joy.hide();
       el.removeEventListener("pointerdown", down);
       el.removeEventListener("pointermove", move);
       el.removeEventListener("pointerup", up);
@@ -497,17 +552,72 @@ export class GalaxyScene {
     };
   }
 
-  /** Vuelo con teclado. Se mueve el objetivo
-   *  además del ojo, así que se atraviesa la nube en vez de rodearla. */
+  /** Vuelo con teclado. En modo vuelo se mueve el objetivo además del ojo, así
+   *  que se atraviesa la nube en vez de rodearla; en órbita no se toca el
+   *  objetivo y las teclas sólo giran y acercan. */
+  /** Enfoca una palabra: vuela hasta ella y encuadra su vecindario.
+   *
+   *  En WebGPU esto cuesta leer 16 bytes de la GPU; aquí las posiciones ya
+   *  están en CPU y es una lectura del array. Que existiera sólo en el motor
+   *  WebGPU era justo el fallo contra el que avisa el `CLAUDE.md`: en esta
+   *  máquina el camino que se ve al abrir el navegador es éste, así que el
+   *  vuelo al seleccionar parecía roto. */
+  focus(id: number) {
+    const { positions } = this.g;
+    this.flyToPoint(new THREE.Vector3(positions[id * 3], positions[id * 3 + 1],
+                                      positions[id * 3 + 2]),
+                    this.meanEdge * 5);
+  }
+
+  /** Encuadra un camino entero: centroide y radio que lo cubre. */
+  focusPath(path: number[]) {
+    if (!path.length) return;
+    const { positions } = this.g;
+    const c = new THREE.Vector3();
+    for (const id of path) {
+      c.x += positions[id * 3]; c.y += positions[id * 3 + 1]; c.z += positions[id * 3 + 2];
+    }
+    c.divideScalar(path.length);
+    let far = 0;
+    for (const id of path) {
+      far = Math.max(far, Math.hypot(positions[id * 3] - c.x,
+                                     positions[id * 3 + 1] - c.y,
+                                     positions[id * 3 + 2] - c.z));
+    }
+    this.flyToPoint(c, Math.max(far * 1.35, this.meanEdge * 5));
+  }
+
+  private flyToPoint(p: THREE.Vector3, distance: number) {
+    this.fly.stop();   // la inercia pendiente pelea contra la interpolación
+    this.flyTarget = p;
+    this.flyDistance = distance;
+  }
+
+  /** Un paso de la interpolación del vuelo. Aterriza en seco cuando ya está
+   *  cerca: si no, la exponencial se acerca para siempre sin llegar. */
+  private flyLerp() {
+    const t = this.flyTarget;
+    if (!t) return;
+    const k = 0.14;
+    this.target.lerp(t, k);
+    this.distance += (this.flyDistance - this.distance) * k;
+    if (this.target.distanceTo(t) < this.flyDistance * 0.004 &&
+        Math.abs(this.distance - this.flyDistance) < this.flyDistance * 0.01) {
+      this.target.copy(t);
+      this.distance = this.flyDistance;
+      this.flyTarget = null;
+    }
+  }
+
   private flyStep() {
     if (!this.fly.active()) { this.fly.read(); return; }
     const k = this.fly.read();
 
     this.theta += k.yaw;
-    this.phi = Math.min(Math.PI - 1e-4, Math.max(1e-4, this.phi + k.pitch));
+    this.phi = Math.min(Math.PI - EPS, Math.max(EPS, this.phi + k.pitch));
     this.distance *= 1 + k.zoom;
 
-    if (k.fwd || k.side || k.vert) {
+    if (this.cameraMode === 'fly' && (k.fwd || k.side || k.vert)) {
       const e = this.eye();
       const f = new THREE.Vector3().subVectors(this.target, e).normalize();
       const r = new THREE.Vector3(-f.z, 0, f.x).normalize();
@@ -519,6 +629,7 @@ export class GalaxyScene {
 
   private loop = () => {
     this.raf = requestAnimationFrame(this.loop);
+    this.flyLerp();
     this.flyStep();
 
     if (this.joyActive && this.cameraMode === 'fly') {
@@ -533,7 +644,7 @@ export class GalaxyScene {
 
           const eyeBefore = this.eye();
           this.theta += speedX;
-          this.phi = Math.min(Math.PI - 1e-4, Math.max(1e-4, this.phi + speedY));
+          this.phi = Math.min(Math.PI - EPS, Math.max(EPS, this.phi + speedY));
 
           const sp = Math.sin(this.phi);
           this.target.set(
@@ -555,7 +666,7 @@ export class GalaxyScene {
     }
 
     this.theta += this.vTheta;
-    this.phi = Math.min(Math.PI - 1e-4, Math.max(1e-4, this.phi + this.vPhi));
+    this.phi = Math.min(Math.PI - EPS, Math.max(EPS, this.phi + this.vPhi));
     this.distance *= 1 + this.vDist;
     this.vTheta *= 0.86;
     this.vPhi *= 0.86;
@@ -568,8 +679,17 @@ export class GalaxyScene {
     // Actualización dinámica de uFar (draw distance) según la distancia de la cámara al objetivo.
     const dist = this.camera.position.distanceTo(this.target);
     const uFarValue = Math.min(this.radius * 5.0, dist * 2.0);
-    (this.points.material as THREE.ShaderMaterial).uniforms.uFar.value = uFarValue;
-    (this.lines.material as THREE.ShaderMaterial).uniforms.uFar.value = uFarValue;
+    // Tramo de bruma, atado a la órbita y no al radio de la nube: lo que se mira
+    // queda siempre a media bruma. El suelo evita que al entrar en el núcleo
+    // (distancia ≈ 0) la bruma colapse a un plano. Igual que `engine.ts`.
+    const fogSpan = Math.max(dist, this.radius * 0.35) * 2.3;
+    const fogNear = dist - fogSpan * 0.45;
+    for (const o of [this.points, this.lines]) {
+      const u = (o.material as THREE.ShaderMaterial).uniforms;
+      u.uFar.value = uFarValue;
+      u.uFogNear.value = fogNear;
+      u.uFogSpan.value = fogSpan;
+    }
 
     this.renderer.render(this.scene, this.camera);
   };
