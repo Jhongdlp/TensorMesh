@@ -311,21 +311,48 @@ export class GalaxyScene {
     this.edgeDim.needsUpdate = true;
   }
 
-  /** Nodo más cercano al puntero. Asíncrono sólo para igualar al motor WebGPU,
-   *  donde la selección ocurre en GPU y hay que esperar al mapeo del buffer. */
   async pick(px: number, py: number): Promise<number | null> {
     const r = this.canvas.getBoundingClientRect();
     const { positions, meta } = this.g;
+    const sizes = this.points.geometry.getAttribute("aSize").array as Float32Array;
+    const mat = this.points.material as THREE.ShaderMaterial;
+    const uScale = mat.uniforms.uScale.value;
+    const uMinPx = mat.uniforms.uMinPx.value;
     const v = new THREE.Vector3();
-    let best = -1, bestD = 22 * 22;
+    const nodePos = new THREE.Vector3();
+    let best = -1;
+    let bestScore = Infinity;
+
     for (let i = 0; i < meta.nodes; i++) {
-      v.set(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2])
-        .project(this.camera);
+      nodePos.set(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]);
+      v.copy(nodePos).project(this.camera);
       if (v.z > 1) continue;
+
       const sx = (v.x * 0.5 + 0.5) * r.width;
       const sy = (-v.y * 0.5 + 0.5) * r.height;
-      const d = (sx - px) ** 2 + (sy - py) ** 2;
-      if (d < bestD) { bestD = d; best = i; }
+      const d_px = Math.hypot(sx - px, sy - py);
+
+      // Calcular profundidad en espacio de cámara y radio visual en píxeles
+      nodePos.applyMatrix4(this.camera.matrixWorldInverse);
+      const depth = Math.max(-nodePos.z, 1.0);
+      const r_i = Math.max((sizes[i] * uScale) / depth, uMinPx) * 0.5;
+
+      const maxD = Math.max(22, r_i);
+      if (d_px > maxD) continue;
+
+      let score: number;
+      if (d_px <= r_i) {
+        // Acierto directo: priorizar profundidad, desempatar con distancia
+        score = depth * 10.0 + d_px * 0.1;
+      } else {
+        // Fuera del nodo: priorizar distancia al borde, desempatar con profundidad
+        score = 16384.0 + (d_px - r_i) * 500.0 + depth * 0.1;
+      }
+
+      if (score < bestScore) {
+        bestScore = score;
+        best = i;
+      }
     }
     return best < 0 ? null : best;
   }

@@ -633,7 +633,8 @@ readBuf.unmap();
     layout: pickPipe.getBindGroupLayout(0),
     entries: [{ binding: 0, resource: { buffer: pickU } },
               { binding: 1, resource: { buffer: pos[cur] } },
-              { binding: 2, resource: { buffer: pickOut } }],
+              { binding: 2, resource: { buffer: pickOut } },
+              { binding: 3, resource: { buffer: bCol } }],
   });
 
   // posiciones actuales, para saber a qué píxel apuntar
@@ -660,6 +661,7 @@ readBuf.unmap();
     new Float32Array(u, 64, 4).set([sx, sy, W, H]);
     new Uint32Array(u, 80, 1).set([n]);
     new Float32Array(u, 84, 1).set([22]);
+    new Float32Array(u, 88, 2).set([proj[0], 2.0]);
     device.queue.writeBuffer(pickU, 0, u);
     device.queue.writeBuffer(pickOut, 0, new Uint32Array([0xffffffff]));
     const e = device.createCommandEncoder();

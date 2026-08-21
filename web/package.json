@@ -23,12 +23,14 @@
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
-    "@kmamal/gpu": "^0.2.0",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@types/three": "^0.185.4",
     "@webgpu/types": "^0.1.72",
     "typescript": "^7.0.2"
+  },
+  "optionalDependencies": {
+    "@kmamal/gpu": "^0.2.0"
   },
   "allowScripts": {
     "esbuild@0.28.2": true,

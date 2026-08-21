@@ -395,6 +395,7 @@ export class GpuEngine {
         { binding: 0, resource: { buffer: this.pickU } },
         { binding: 1, resource: { buffer: p } },
         { binding: 2, resource: { buffer: this.pickOut } },
+        { binding: 3, resource: { buffer: bCol } },
       ],
     });
     this.pickBG = [pickGroup(this.pos[0]), pickGroup(this.pos[1])];
@@ -687,6 +688,8 @@ export class GpuEngine {
       new Float32Array(buf, 64, 4).set([px * dpr, py * dpr, w, h]);
       new Uint32Array(buf, 80, 1).set([this.n]);
       new Float32Array(buf, 84, 1).set([PICK_RADIUS * dpr]);
+      const proj = this.camera.projection(w / h);
+      new Float32Array(buf, 88, 2).set([proj[0], this.params.minPx * dpr]);
       this.device.queue.writeBuffer(this.pickU, 0, buf);
       this.device.queue.writeBuffer(this.pickOut, 0, new Uint32Array([0xffffffff]));
 

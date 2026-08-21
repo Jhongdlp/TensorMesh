@@ -14,13 +14,14 @@ struct PickU {
   vp       : vec2f,   // tamaño del viewport en píxeles
   n        : u32,
   radius   : f32,     // radio de captura en píxeles
-  pad0     : f32,
-  pad1     : f32,
+  projXX   : f32,     // proyección[0][0]: convierte tamaño de mundo a NDC en x
+  minPx    : f32,     // radio mínimo en píxeles
 };
 
 @group(0) @binding(0) var<uniform>             U    : PickU;
 @group(0) @binding(1) var<storage, read>       pos  : array<vec4f>;
 @group(0) @binding(2) var<storage, read_write> best : atomic<u32>;
+@group(0) @binding(3) var<storage, read>       colour : array<vec4f>;
 
 const NONE : u32 = 0xFFFFFFFFu;
 
@@ -36,10 +37,23 @@ fn pick(@builtin(global_invocation_id) gid: vec3u) {
   let sx  = (ndc.x * 0.5 + 0.5) * U.vp.x;
   let sy  = (1.0 - (ndc.y * 0.5 + 0.5)) * U.vp.y;
   let d   = distance(vec2f(sx, sy), U.cursor);
-  if (d > U.radius) { return; }
 
-  // 13 bits de distancia (0-128 px con 1/64 de resolución) + 17 de índice
-  let dq  = u32(clamp(d, 0.0, 127.9) * 64.0);
-  let key = (dq << 17u) | (i & 0x1FFFFu);
+  // Estimamos el radio visual en píxeles similar a vsNode en render.wgsl
+  let r_i = max(colour[i].w * 0.5 * U.vp.x * U.projXX / clip.w, U.minPx);
+  let max_d = max(U.radius, r_i);
+  if (d > max_d) { return; }
+
+  var score : f32;
+  if (d <= r_i) {
+    // Direct hit: prioritize depth (closer to camera is smaller score).
+    // Tie-break with screen distance.
+    score = clamp(clip.w * 10.0 + d * 0.1, 0.0, 16383.0);
+  } else {
+    // Miss: prioritize distance from the node's visual boundary.
+    // Tie-break with depth.
+    score = 16384.0 + clamp((d - r_i) * 500.0 + clip.w * 0.1, 0.0, 16383.0);
+  }
+
+  let key = (u32(score) << 17u) | (i & 0x1FFFFu);
   atomicMin(&best, key);
 }
