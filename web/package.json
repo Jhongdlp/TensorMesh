@@ -1,0 +1,37 @@
+{
+  "name": "web",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check": "tsc -p tsconfig.check.json",
+    "test:physics": "node test/physics.mjs",
+    "test:render": "node test/render.mjs",
+    "test": "npm run check && npm run test:physics && npm run test:render"
+  },
+  "keywords": [],
+  "type": "commonjs",
+  "dependencies": {
+    "@astrojs/react": "^6.0.4",
+    "astro": "^7.2.4",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "@kmamal/gpu": "^0.2.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@types/three": "^0.185.4",
+    "@webgpu/types": "^0.1.72",
+    "typescript": "^7.0.2"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "@kmamal/gpu@0.2.1": true
+  }
+}

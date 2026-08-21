@@ -1,0 +1,364 @@
+---
+import GalaxyView from "../components/Galaxy.tsx";
+---
+
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Atlas Vectorial</title>
+    <meta
+      name="description"
+      content="Galaxia navegable de embeddings: 50.000 palabras por idioma, colocadas por simulación de fuerzas sobre su grafo de vecinos más cercanos."
+    />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+    />
+  </head>
+  <body>
+    <!-- El visor es la única isla que se hidrata; el resto de la página
+         (cuando lleguen las lecciones) será HTML estático. -->
+    <GalaxyView client:only="react" lang="es" />
+
+    <noscript>
+      <p class="ns">La galaxia necesita JavaScript y WebGL para dibujarse.</p>
+    </noscript>
+
+    <style is:global>
+      :root {
+        --void: #05070d;
+        --ink: #dee2ed;
+        --ink-2: #a4aabe;
+        --ink-3: #6e7490;
+        --rule: #1c2233;
+        --halpha: #f0648c;
+        --oiii: #4cc7bd;
+      }
+
+      * { box-sizing: border-box; }
+
+      html, body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: var(--void);
+        color: var(--ink-2);
+        font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .galaxy-root { position: fixed; inset: 0; }
+
+      .galaxy-canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+        cursor: crosshair;
+      }
+      .galaxy-canvas.over { cursor: pointer; }
+
+      /* --- tooltip al pasar el ratón, en lugar de etiquetas permanentes --- */
+      .tip {
+        position: absolute;
+        transform: translate(14px, -50%);
+        pointer-events: none;
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 12px;
+        color: #fff;
+        background: rgba(8, 11, 20, 0.92);
+        border: 1px solid var(--rule);
+        padding: 0.2rem 0.45rem;
+        white-space: nowrap;
+        z-index: 5;
+      }
+
+      /* --- paneles --- */
+      .hud {
+        position: absolute;
+        background: rgba(8, 11, 20, 0.86);
+        border: 1px solid var(--rule);
+        backdrop-filter: blur(9px);
+        padding: 0.85rem 0.95rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+      .hud-tl { top: 1rem; left: 1rem; width: min(19rem, calc(100vw - 2rem)); }
+
+      .langs { display: flex; gap: 1px; background: var(--rule); border: 1px solid var(--rule); }
+      .langs button {
+        flex: 1;
+        background: #0c1120;
+        border: 0;
+        color: var(--ink-3);
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.68rem;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        padding: 0.42rem 0;
+        cursor: pointer;
+      }
+      .langs button:hover { color: var(--ink-2); }
+      .langs button.on { background: #16203a; color: var(--oiii); }
+
+      .hud-tr {
+        top: 1rem;
+        right: 1rem;
+        width: min(15.5rem, calc(100vw - 2rem));
+        gap: 0.35rem;
+      }
+      .ctl-head { display: flex; justify-content: space-between; align-items: baseline; }
+      .eyebrow {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.62rem;
+        letter-spacing: 0.13em;
+        text-transform: uppercase;
+        color: var(--oiii);
+      }
+      .fps {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.66rem;
+        color: var(--ink-3);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .ctl {
+        display: grid;
+        grid-template-columns: 4.6rem 1fr 2.4rem;
+        align-items: center;
+        gap: 0.4rem;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.65rem;
+        color: var(--ink-3);
+      }
+      .ctl b {
+        color: var(--ink-2);
+        font-weight: 400;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+      .ctl input[type="range"] {
+        appearance: none;
+        width: 100%;
+        height: 2px;
+        background: var(--rule);
+        cursor: pointer;
+      }
+      .ctl input[type="range"]::-webkit-slider-thumb {
+        appearance: none;
+        width: 10px; height: 10px;
+        background: var(--oiii);
+        border-radius: 50%;
+      }
+      .ctl input[type="range"]::-moz-range-thumb {
+        width: 10px; height: 10px; border: 0;
+        background: var(--oiii);
+        border-radius: 50%;
+      }
+      .ctl input:focus-visible { outline: 2px solid var(--oiii); outline-offset: 3px; }
+
+      /* --- leyenda de teclado, panel propio sobre la atribución --- */
+      .hud-bl {
+        left: 1rem;
+        bottom: 2.5rem;
+        padding: 0.6rem 0.7rem;
+        gap: 0.3rem;
+        max-width: calc(100vw - 2rem);
+      }
+      .keys summary {
+        cursor: pointer;
+        color: var(--ink-3);
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.6rem;
+        letter-spacing: 0.13em;
+        text-transform: uppercase;
+        list-style: none;
+      }
+      .keys summary::-webkit-details-marker { display: none; }
+      .keys summary::before { content: "▾ "; color: var(--oiii); }
+      .keys:not([open]) summary::before { content: "▸ "; }
+      .keys summary:hover { color: var(--ink-2); }
+      .keys dl {
+        margin: 0.45rem 0 0;
+        display: grid;
+        gap: 0.22rem;
+      }
+      .keys dl > div {
+        display: grid;
+        grid-template-columns: 5.2rem 1fr;
+        align-items: center;
+        gap: 0.55rem;
+      }
+      .keys dt { display: flex; gap: 0.2rem; }
+      .keys dd {
+        margin: 0;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.62rem;
+        color: var(--ink-3);
+      }
+      .keys kbd {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.6rem;
+        line-height: 1;
+        color: var(--ink-2);
+        background: #131a2c;
+        border: 1px solid var(--rule);
+        border-bottom-width: 2px;
+        border-radius: 3px;
+        padding: 0.22rem 0.3rem;
+        min-width: 1.5rem;
+        text-align: center;
+      }
+      /* Sin teclado que anunciar: en pantallas de mano sólo taparía galaxia. */
+      @media (max-width: 720px), (max-height: 620px) {
+        .hud-bl { display: none; }
+      }
+
+      .cull {
+        margin: 0.2rem 0 0;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.6rem;
+        line-height: 1.5;
+        color: var(--ink-3);
+        font-variant-numeric: tabular-nums;
+      }
+      .ctl-row { display: flex; gap: 1px; margin-top: 0.35rem; background: var(--rule); }
+      .ctl-row button {
+        flex: 1;
+        background: #0c1120;
+        border: 0;
+        color: var(--ink-3);
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.62rem;
+        letter-spacing: 0.06em;
+        padding: 0.4rem 0;
+        cursor: pointer;
+      }
+      .ctl-row button:hover { color: var(--ink-2); }
+      .ctl-row button.on { background: #16203a; color: var(--oiii); }
+
+      .hint { color: #545a72; }
+      .mode { letter-spacing: 0.07em; }
+      .mode-live { color: var(--oiii); }
+
+      .attrib {
+        position: absolute;
+        left: 1rem;
+        bottom: 0.8rem;
+        margin: 0;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.62rem;
+        letter-spacing: 0.05em;
+        color: #4a5068;
+      }
+      .attrib a { color: #5c6480; }
+      .attrib a:hover { color: var(--ink-3); }
+      .hud-br {
+        right: 1rem;
+        bottom: 1rem;
+        width: min(17rem, calc(100vw - 2rem));
+        max-height: min(30rem, calc(100vh - 2rem));
+      }
+
+      .hud input {
+        width: 100%;
+        background: #0c1120;
+        border: 1px solid var(--rule);
+        color: var(--ink);
+        font: inherit;
+        font-size: 0.9rem;
+        padding: 0.45rem 0.6rem;
+      }
+      .hud input:focus-visible { outline: 2px solid var(--oiii); outline-offset: 1px; }
+
+      .stat, .err, .foot {
+        margin: 0;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.68rem;
+        line-height: 1.5;
+        letter-spacing: 0.03em;
+        color: var(--ink-3);
+      }
+      .err { color: var(--halpha); }
+
+      /* Punto de zona: el mismo color que la palabra tiene en la malla. Es la
+         única leyenda que hay, y por eso va pegada al dato, no en un recuadro
+         aparte que nadie mira. */
+      .swatch {
+        display: inline-block;
+        width: 0.45rem;
+        height: 0.45rem;
+        border-radius: 50%;
+        margin-right: 0.45rem;
+        vertical-align: 0.02rem;
+        box-shadow: 0 0 0 1px #0006 inset;
+      }
+      .foot { border-top: 1px solid var(--rule); padding-top: 0.5rem; }
+
+      .hud-br header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 0.5rem;
+      }
+      .hud-br h2 {
+        margin: 0;
+        font-size: 1.2rem;
+        font-weight: 600;
+        color: #fff;
+        overflow-wrap: anywhere;
+      }
+      .hud-br header button {
+        background: none;
+        border: 0;
+        color: var(--ink-3);
+        font-size: 1.3rem;
+        line-height: 1;
+        cursor: pointer;
+        padding: 0 0.15rem;
+      }
+      .hud-br header button:hover { color: var(--ink); }
+
+      .nbrs {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+      }
+      .nbrs li {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 0.6rem;
+        border-top: 1px solid var(--rule);
+      }
+      .nbrs li:first-child { border-top: 0; }
+      .nbrs button {
+        flex: 1;
+        text-align: left;
+        background: none;
+        border: 0;
+        color: var(--ink);
+        font: inherit;
+        font-size: 0.88rem;
+        padding: 0.3rem 0;
+        cursor: pointer;
+      }
+      .nbrs button:hover { color: var(--oiii); }
+      .nbrs span {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.7rem;
+        color: var(--ink-3);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .ns { position: absolute; top: 45%; width: 100%; text-align: center; }
+    </style>
+  </body>
+</html>

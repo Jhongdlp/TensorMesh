@@ -1,0 +1,10 @@
+{
+  "lang": "es",
+  "nodes": 50000,
+  "edges": 147307,
+  "csr": 294614,
+  "posScale": 0.18569717407226563,
+  "communities": 28,
+  "stopwords": 107,
+  "generated": "2026-08-20T16:13:06"
+}
