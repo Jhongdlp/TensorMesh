@@ -1743,6 +1743,441 @@ import GalaxyView from "../components/Galaxy.tsx";
       .ns { position: absolute; top: 45%; width: 100%; text-align: center; }
 
 
+
+      /* ================= la guía =================
+         Diez capítulos con láminas que se tocan. Comparte el velo y el idioma
+         visual de la presentación, y se separa de ella en una sola cosa que lo
+         cambia todo: **no es una secuencia, es un documento**. De ahí las dos
+         columnas —índice a la izquierda, capítulo a la derecha— en vez de los
+         cuatro puntos de abajo: con diez capítulos, un punto no dice a dónde
+         lleva, y quien vuelve a la guía vuelve a *un* capítulo, no al primero. */
+      .gd-veil {
+        position: absolute;
+        inset: 0;
+        z-index: 20;
+        display: grid;
+        place-items: center;
+        padding: 1rem;
+        background: rgba(2, 3, 8, 0.72);
+        backdrop-filter: blur(7px);
+        animation: wl-veil-in 0.2s ease-out;
+      }
+      .gd {
+        /* Más ancho que la presentación porque lleva una columna más, y con
+           alto fijo y no mínimo: el cuerpo hace su propio scroll, así que el
+           índice y el pie tienen que quedarse quietos mientras se lee. Un
+           cuadro que crece con el capítulo mueve el «siguiente» bajo el dedo
+           entre uno y el siguiente, que es el mismo error que ya arregló la
+           presentación con su suelo. */
+        width: min(52rem, 100%);
+        height: min(38rem, calc(100vh - 2rem));
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        background: rgba(0, 0, 0, 0.93);
+        border: 1px solid #ffffff2b;
+        border-radius: 20px;
+        padding: 0.9rem 1.1rem 0.75rem;
+        color: #fff;
+        animation: wl-in 0.22s cubic-bezier(0.2, 0.7, 0.3, 1);
+      }
+      .gd:focus { outline: none; }
+
+      .gd-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.6rem;
+        flex: 0 0 auto;
+      }
+      .gd-top-acts { display: flex; align-items: center; gap: 0.4rem; }
+      /* «Ver la presentación» y «cerrar» pesan lo mismo a propósito: ninguna de
+         las dos es la acción principal de la guía —ésa es leerla— y hacer una
+         más gorda que la otra sólo empuja a salirse. */
+      .gd-ghost {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        background: #ffffff08;
+        border: 1px solid #ffffff2b;
+        border-radius: 999px;
+        color: var(--ink-3);
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.62rem;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        padding: 0.3rem 0.65rem;
+        cursor: pointer;
+      }
+      .gd-ghost:hover { background: #ffffff14; border-color: #ffffff5c; color: #fff; }
+      .gd-ghost:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+      .gd-ghost kbd {
+        font-family: inherit;
+        font-size: 0.9em;
+        color: #ffffff59;
+      }
+
+      .gd-main {
+        flex: 1;
+        min-height: 0;      /* sin esto el hijo con scroll no encoge y desborda */
+        display: grid;
+        grid-template-columns: 9.5rem minmax(0, 1fr);
+        gap: 0.9rem;
+      }
+
+      /* El índice. Es una columna de capítulos numerados y no unos puntos: con
+         diez, el número es lo que deja volver a uno concreto. Tiene su propio
+         scroll para que el cuerpo no arrastre al índice al leer. */
+      .gd-toc {
+        display: flex;
+        flex-direction: column;
+        gap: 0.1rem;
+        overflow-y: auto;
+        scrollbar-width: thin;
+        scrollbar-color: #ffffff2b transparent;
+        border-right: 1px solid var(--rule);
+        padding-right: 0.5rem;
+      }
+      .gd-toc-i {
+        display: flex;
+        align-items: baseline;
+        gap: 0.45rem;
+        width: 100%;
+        text-align: left;
+        background: none;
+        border: 0;
+        border-radius: 7px;
+        padding: 0.38rem 0.45rem;
+        color: var(--ink-3);
+        font: inherit;
+        font-size: 0.76rem;
+        line-height: 1.25;
+        cursor: pointer;
+      }
+      /* El número va en monoespaciada y a dos cifras: alineados, la columna se
+         lee como un índice; con una cifra y dos, como una lista descuadrada. */
+      .gd-toc-i b {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.6rem;
+        font-weight: 500;
+        color: #ffffff3d;
+      }
+      .gd-toc-i:hover { background: #ffffff0f; color: var(--ink-2); }
+      .gd-toc-i.on { background: #ffffff1f; color: #fff; }
+      .gd-toc-i.on b { color: #ffffffa6; }
+      .gd-toc-i:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
+
+      .gd-page {
+        overflow-y: auto;
+        scrollbar-width: thin;
+        scrollbar-color: #ffffff2b transparent;
+        padding-right: 0.35rem;
+        /* La medida de lectura. Un párrafo de 52 rem de ancho se pierde de
+           renglón en renglón, y esto es lo único del atlas que se lee seguido. */
+        max-width: 34rem;
+      }
+      .gd-head {
+        margin: 0;
+        font-size: 1.22rem;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        line-height: 1.15;
+        color: #fff;
+      }
+      /* La entradilla: la frase que hay que recordar si sólo se lee una. Va en
+         cuerpo mayor que el cuerpo y en blanco, no en gris. */
+      .gd-lede {
+        margin: 0.45rem 0 0;
+        font-size: 0.95rem;
+        line-height: 1.5;
+        color: #ffffffd6;
+      }
+      .gd-body {
+        margin: 0.7rem 0 0;
+        font-size: 0.88rem;
+        line-height: 1.62;
+        color: #ffffffb3;
+      }
+      .gd-note {
+        margin: 0.9rem 0 0.2rem;
+        padding-top: 0.55rem;
+        border-top: 1px solid #ffffff1f;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.62rem;
+        line-height: 1.6;
+        letter-spacing: 0.04em;
+        color: #ffffff73;
+      }
+
+      .gd-list {
+        list-style: none;
+        margin: 0.75rem 0 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+      .gd-list li {
+        display: flex;
+        gap: 0.55rem;
+        font-size: 0.86rem;
+        line-height: 1.55;
+        color: #ffffffb3;
+      }
+      .gd-list b { font-weight: 600; color: #fff; }
+      .gd-list-t { color: #ffffff8f; }
+      /* La lista de gestos lleva icono: cada fila nombra algo que existe en la
+         pantalla de detrás y el icono es cómo se reconoce luego. */
+      .gd-list-ico {
+        flex: 0 0 auto;
+        display: grid;
+        place-items: center;
+        width: 1.5rem;
+        height: 1.5rem;
+        border-radius: 7px;
+        background: #ffffff0f;
+        color: var(--ink-2);
+      }
+      .gd-list-ico svg { width: 0.95rem; height: 0.95rem; }
+
+      /* --- las láminas --- */
+      .gd-stage {
+        margin: 0.85rem 0 0;
+        padding: 0.7rem 0.6rem 0.55rem;
+        background: #ffffff05;
+        border: 1px solid var(--rule);
+        border-radius: 14px;
+        animation: card-in 0.2s ease-out;
+      }
+      .gd-fig { display: flex; flex-direction: column; gap: 0.5rem; }
+      .gd-art { display: block; width: 100%; height: auto; }
+      /* Arrastrable: el cursor es la mitad del aviso de que esto se toca, y la
+         otra mitad es el rótulo que la propia lámina lleva escrito dentro. */
+      .gd-grab { cursor: grab; touch-action: none; }
+      .gd-grab:active { cursor: grabbing; }
+      .gd-grab:focus-visible { outline: 2px solid #fff; outline-offset: 3px; border-radius: 10px; }
+      .gd-art-w {
+        font-family: "IBM Plex Sans", sans-serif;
+        font-size: 11px;
+        fill: #fff;
+      }
+      .gd-art-sm { font-size: 9px; fill: #ffffffb3; }
+      .gd-art-n {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 8.5px;
+        letter-spacing: 0.04em;
+        fill: #ffffff8f;
+      }
+
+      .gd-fig-acts {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.35rem;
+      }
+      /* Los botones de una lámina no son los de la interfaz: viven dentro del
+         dibujo que están cambiando, así que van pequeños y sin peso. */
+      .gd-pill {
+        background: #ffffff0a;
+        border: 1px solid #ffffff2b;
+        border-radius: 999px;
+        color: var(--ink-3);
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.62rem;
+        letter-spacing: 0.05em;
+        padding: 0.25rem 0.6rem;
+        cursor: pointer;
+      }
+      .gd-pill:hover { background: #ffffff14; color: #fff; }
+      .gd-pill.on { background: #ffffff26; border-color: #ffffff5c; color: #fff; }
+      .gd-pill:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+      .gd-cap {
+        margin: 0;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.64rem;
+        letter-spacing: 0.05em;
+        color: var(--ink-3);
+      }
+      .gd-cap b { color: #fff; font-weight: 500; }
+
+      /* Las frases con hueco. En HTML y no en SVG: son frases, y una frase
+         dentro de un <text> no se parte de línea ni la lee un lector. */
+      .gd-ctx {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+      }
+      .gd-ctx li {
+        padding: 0.3rem 0.5rem;
+        border-radius: 8px;
+        font-size: 0.82rem;
+        line-height: 1.45;
+        color: #ffffff59;
+        transition: color 0.15s ease, background 0.15s ease;
+      }
+      .gd-ctx li.on { background: #ffffff0f; color: #ffffffd6; }
+      /* El hueco: la raya del que no encaja y la palabra del que sí, en el
+         mismo sitio y con el mismo ancho mínimo, para que la lista no salte de
+         maquetación al cambiar de palabra. */
+      .gd-slot {
+        display: inline-block;
+        min-width: 3.6rem;
+        text-align: center;
+        font-style: normal;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.78rem;
+        color: #ffffff40;
+      }
+      .gd-ctx li.on .gd-slot { color: #fff; }
+
+      .gd-foot {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.6rem;
+        padding-top: 0.5rem;
+        border-top: 1px solid var(--rule);
+      }
+      .gd-count {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.62rem;
+        letter-spacing: 0.08em;
+        color: #ffffff59;
+      }
+      .gd-foot-acts { display: flex; align-items: center; gap: 0.4rem; }
+      .gd-back {
+        background: none;
+        border: 0;
+        padding: 0.4rem 0.5rem;
+        color: var(--ink-3);
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.66rem;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        cursor: pointer;
+      }
+      .gd-back:hover { color: #fff; }
+      .gd-back:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+      .gd-go {
+        background: #fff;
+        border: 0;
+        border-radius: 999px;
+        color: #000;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.66rem;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        padding: 0.45rem 0.9rem;
+        cursor: pointer;
+      }
+      .gd-go:hover { background: #ffffffd6; }
+      .gd-go:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+
+      /* En pantalla estrecha el índice deja de ser columna y pasa a ser una
+         tira que se desliza por encima del capítulo: 9,5 rem de índice sobre
+         un móvil dejan el texto en un canalón. */
+      @media (max-width: 720px) {
+        .gd { width: 100%; height: calc(100vh - 1.2rem); padding: 0.8rem 0.85rem 0.7rem; border-radius: 16px; }
+        .gd-main { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: 0.5rem; }
+        .gd-toc {
+          flex-direction: row;
+          overflow-x: auto;
+          overflow-y: hidden;
+          border-right: 0;
+          border-bottom: 1px solid var(--rule);
+          padding: 0 0 0.4rem;
+          scrollbar-width: none;
+        }
+        .gd-toc-i { flex: 0 0 auto; white-space: nowrap; }
+        .gd-head { font-size: 1.08rem; }
+        .gd-lede { font-size: 0.88rem; }
+      }
+      /* Apaisado de móvil: lo primero que sobra es la lámina, porque el texto
+         no sobra nunca. Misma regla que la presentación. */
+      @media (max-height: 480px) {
+        .gd-stage { display: none; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .gd-veil, .gd, .gd-stage { animation: none; }
+        .gd-ctx li { transition: none; }
+      }
+
+      /* La salida a la guía desde la última pantalla de la presentación. Encima
+         del pie y no dentro: el pie lo manda el botón blanco, y un segundo
+         mando con ese peso convierte la jerarquía en un empate. */
+      .wl-more { margin: 0.55rem 0 0; }
+
+      /* ================= el «por qué» de los pies =================
+         Cada panel acaba diciendo de dónde sale su número; esto es la puerta al
+         capítulo donde ese número se explica. Va con el mismo gris del pie y
+         subrayado punteado: es un enlace dentro de una frase, no un botón, y
+         los botones de verdad de estos paneles ya tienen su forma. */
+      .why {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.2rem;
+        background: none;
+        border: 0;
+        padding: 0;
+        margin-left: 0.15rem;
+        color: var(--ink-3);
+        font: inherit;
+        text-decoration: underline dotted;
+        text-underline-offset: 2px;
+        cursor: pointer;
+        vertical-align: baseline;
+      }
+      .why:hover { color: #fff; }
+      .why:focus-visible { outline: 2px solid #fff; outline-offset: 2px; border-radius: 4px; }
+      .why svg { opacity: 0.7; }
+      .why:hover svg { opacity: 1; }
+
+      /* ================= el guía de primeros gestos =================
+         Una línea, abajo en el centro, sin marco y sin ratón. No es un mando:
+         es el rótulo que dice el gesto siguiente, y por eso `pointer-events`
+         va apagado — la franja de abajo del lienzo tiene que seguir sirviendo
+         para orbitar. Se retira sola en cuanto alguien coge y suelta su primera
+         palabra, así que nunca llega a ser un mueble.
+
+         El texto lleva sombra y no caja: una píldora más abajo, junto a la de
+         vista completa y la de compartir, sería la cuarta cosa negra flotando
+         sobre la galaxia. La sombra basta para leerlo sobre un brazo claro de
+         la nebulosa, que es el único fondo difícil que hay. */
+      .coach {
+        position: absolute;
+        left: 50%;
+        bottom: 1.15rem;
+        transform: translateX(-50%);
+        z-index: 3;
+        margin: 0;
+        max-width: calc(100vw - 2rem);
+        text-align: center;
+        pointer-events: none;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.68rem;
+        letter-spacing: 0.06em;
+        color: #ffffffa6;
+        text-shadow: 0 2px 12px #000, 0 0 4px #000;
+        animation: card-in 0.3s ease-out;
+      }
+      /* Cuando la píldora de vista completa ocupa el centro de abajo, el guía
+         sube un escalón. Las dos aparecen a la vez en cuanto hay algo cogido,
+         que es justo el momento en que el guía dice cómo soltarlo. */
+      .coach-up { bottom: 3.6rem; }
+      /* Centrado en la ventana y no en el hueco que deja el cajón, igual que
+         `.held` y que la píldora de vista completa: las tres viven en el eje
+         del lienzo y una sola de ellas descentrada se lee como un error. */
+      @media (max-width: 720px) {
+        .coach { font-size: 0.62rem; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .coach { animation: none; }
+      }
+
       .ns { position: absolute; top: 45%; width: 100%; text-align: center; }
     </style>
   </body>

@@ -27,7 +27,7 @@
  */
 import { OrbitCamera } from "../../galaxy/gpu/camera";
 import {
-  SURFACES, HYPER, N_DEFAULT, N_MAX, OPTS,
+  SURFACES, HYPER, N_DEFAULT, N_MAX, N_REF, OPTS, TRACED, PATH_LEN,
   metricsOf, seedWalkers,
 } from "./field.mjs";
 import fieldWGSL from "./field.wgsl?raw";
@@ -42,13 +42,26 @@ const DEPTH: GPUTextureFormat = "depth16unorm";
  *  justamente lo que forma la estela. */
 const TRAIL: GPUTextureFormat = "rgba16float";
 
+/** Radio del **rastro** en unidades de mundo. La bolita que se ve encima mide
+ *  `WALKER_SIZE · HEAD_SCALE`: el rastro tiene que ser fino para que la estela
+ *  sea un hilo y no una cinta, y la cabeza gorda para que sea una bolita. */
 const WALKER_SIZE = 0.009;
+const HEAD_SCALE = 2.4;
 const MIN_PX = 1.35;
 /** Cuánto se levanta el caminante sobre el relieve. Sin esto, punto y malla
  *  ocupan la misma profundidad y la prueba `less` los borra a medias: aparecen
  *  y desaparecen según el ángulo. */
 const LIFT = 0.012;
 const MESH_RES = 192;
+
+/** Ángulo polar de las dos vistas. `OrbitCamera` arranca en 1,15 rad porque
+ *  para la galaxia —una nube sin arriba ni abajo— da igual; para un relieve no.
+ *  A 1,15 se mira el terreno **casi de canto**: la pared del fondo tapa el
+ *  valle, se ve la cara de abajo de la malla y los caminantes quedan detrás de
+ *  su propia loma. A 0,78 (unos 45° sobre el horizonte) el relieve se lee como
+ *  relieve y la nube se ve **encima** de él, que es donde está. */
+const PHI_RELIEF = 0.78;
+const PHI_PLAN = 0.06;
 
 /** Las cinco funciones tienen dos tiempos muy separados —en Rosenbrock el
  *  término en y es `200·(y − x²)` y todo el mundo cae sobre la parábola en diez
@@ -57,7 +70,7 @@ const MESH_RES = 192;
 const SLOW_UNTIL = 40;
 const STEPS_SLOW = 1;
 const STEPS_FAST = 8;
-const TOTAL_STEPS = 6000;
+export const TOTAL_STEPS = 6000;
 /** Tope de pasos por frame: cada uno ocupa una ranura del anillo. */
 const MAX_STEPS = 16;
 const UNI_ALIGN = 256;
@@ -93,11 +106,22 @@ export interface Options {
   running: boolean;
   plan: boolean;
   adaptive: boolean;
+  /** Qué dice el color del caminante. `false` es su **origen** —el ángulo desde
+   *  el que se soltó, que en Himmelblau dibuja el mapa de cuencas—; `true`, su
+   *  **altura actual**, con lo que el enjambre entero se enfría al bajar. Son
+   *  dos preguntas distintas y ninguna gana siempre, así que es un mando y no
+   *  una decisión. Arranca en `true` porque es la que se entiende sin leer
+   *  nada: la primera vez, lo que hay que ver es que la nube baja. */
+  heat: boolean;
+  /** Dibujar el camino de los cinco seguidos. Se puede apagar —el enjambre
+   *  solo también dice algo— pero arranca encendido: es lo único de la sala
+   *  que enseña la **mecánica** y no sólo el resultado. */
+  trace: boolean;
 }
 
 export const DEFAULTS: Options = {
   surface: 0, opt: 1, lr: 0, n: N_DEFAULT, keep: KEEP_REF,
-  running: true, plan: false, adaptive: true,
+  running: true, plan: false, adaptive: true, heat: true, trace: true,
 };
 
 export interface Stats {
@@ -138,6 +162,16 @@ export class DescentEngine {
   private metrics = metricsOf(SURFACES[0]);
   private clearTrail = true;
 
+  /** Distancia del encuadre completo. La guarda el motor porque `OrbitCamera`
+   *  la tiene privada y `roamed` —quién enciende la píldora de «vista
+   *  completa»— necesita compararla. */
+  private homeDist = 0;
+  /** Pasos que la vista pide dar aunque esté en pausa. Es lo que hace
+   *  utilizable el botón de «un paso»: el bucle sólo se despierta con
+   *  `invalidate`, así que encolarlos aquí y gastarlos allí evita tener que
+   *  duplicar la codificación del dispatch fuera del bucle. */
+  private pending = 0;
+
   private lodScale = 1;
   private lodCeil = 1;
   private resScale = 1;
@@ -145,6 +179,11 @@ export class DescentEngine {
 
   private st: [GPUBuffer, GPUBuffer];
   private acc: GPUBuffer;
+  /** Anillo de posiciones de los cinco seguidos. Quince kilobytes: es lo único
+   *  de la sala que guarda historia, y sólo se puede permitir porque son cinco. */
+  private path: GPUBuffer;
+  private traceU: GPUBuffer;
+  private pathHead = 0;
   private tint: GPUBuffer;
   private surfU: GPUBuffer;
   private stepU: GPUBuffer;
@@ -159,17 +198,25 @@ export class DescentEngine {
   private compBG: GPUBindGroup | null = null;
 
   private stepPipe: GPUComputePipeline;
+  private recordPipe: GPUComputePipeline;
   private surfPipe: GPURenderPipeline;
   private walkPipe: GPURenderPipeline;
+  private headPipe: GPURenderPipeline;
+  private tracePipe: GPURenderPipeline;
   private fadePipe: GPURenderPipeline;
   private compPipe: GPURenderPipeline;
 
   private stepBG: GPUBindGroup[][];
   private walkBG: [GPUBindGroup, GPUBindGroup];
+  private headBG: [GPUBindGroup, GPUBindGroup];
+  private recordBG: [GPUBindGroup, GPUBindGroup];
+  private traceBG: GPUBindGroup;
   private surfBG0: GPUBindGroup;
   private stepGroup1: GPUBindGroup;
   private surfGroup1: GPUBindGroup;
   private walkGroup1: GPUBindGroup;
+  private headGroup1: GPUBindGroup;
+  private traceGroup1: GPUBindGroup;
 
   constructor(
     private device: GPUDevice,
@@ -190,10 +237,12 @@ export class DescentEngine {
     this.st = [mk(N_MAX * 8, S | CD), mk(N_MAX * 8, S | CD)];
     this.acc = mk(N_MAX * 16, S | CD);
     this.tint = mk(N_MAX * 16, S | CD);
+    this.path = mk(TRACED * PATH_LEN * 8, S | CD);
+    this.traceU = mk(16, GPUBufferUsage.UNIFORM | CD);
     this.surfU = mk(64, GPUBufferUsage.UNIFORM | CD);
     this.stepU = mk(MAX_STEPS * UNI_ALIGN, GPUBufferUsage.UNIFORM | CD);
-    this.walkerU = mk(112, GPUBufferUsage.UNIFORM | CD);
-    this.meshU = mk(96, GPUBufferUsage.UNIFORM | CD);
+    this.walkerU = mk(144, GPUBufferUsage.UNIFORM | CD);
+    this.meshU = mk(160, GPUBufferUsage.UNIFORM | CD);
     this.trailSmp = device.createSampler({ magFilter: "linear", minFilter: "linear" });
 
     // `field.wgsl` se antepone a los tres módulos que necesitan el campo. El
@@ -205,6 +254,10 @@ export class DescentEngine {
 
     this.stepPipe = device.createComputePipeline({
       layout: "auto", compute: { module: stepMod, entryPoint: "step" },
+    });
+
+    this.recordPipe = device.createComputePipeline({
+      layout: "auto", compute: { module: stepMod, entryPoint: "record" },
     });
 
     this.surfPipe = device.createRenderPipeline({
@@ -230,6 +283,49 @@ export class DescentEngine {
       },
       primitive: { topology: "triangle-list" },
       // Sólo lectura de profundidad: se respeta el relieve sin estropearlo.
+      depthStencil: { format: DEPTH, depthWriteEnabled: false, depthCompare: "less" },
+    });
+
+    // La bolita. Va **sobre el lienzo ya compuesto** y no dentro de la textura
+    // de estelas: la estela es aditiva y sin escritura de profundidad —suma luz
+    // y no tapa—, y una bolita que no tapa no es una bolita. Con mezcla alfa
+    // normal, en cambio, la de delante oculta a la de detrás, que es lo único
+    // que hace que cuarenta de ellas se lean como un enjambre con fondo.
+    // La profundidad sigue siendo la del relieve, en sólo lectura.
+    this.headPipe = device.createRenderPipeline({
+      layout: "auto",
+      vertex: { module: walkMod, entryPoint: "vsHead" },
+      fragment: {
+        module: walkMod, entryPoint: "fsHead",
+        targets: [{
+          format: this.fmt,
+          blend: {
+            color: { srcFactor: "src-alpha", dstFactor: "one-minus-src-alpha", operation: "add" },
+            alpha: { srcFactor: "one", dstFactor: "one-minus-src-alpha", operation: "add" },
+          },
+        }],
+      },
+      primitive: { topology: "triangle-list" },
+      depthStencil: { format: DEPTH, depthWriteEnabled: false, depthCompare: "less" },
+    });
+
+    // El camino de los cinco. Mismo estado de mezcla que las cabezas y la misma
+    // profundidad en sólo lectura: un punto del rastro al otro lado de una loma
+    // tiene que quedar tapado por ella, o el camino miente sobre por dónde fue.
+    this.tracePipe = device.createRenderPipeline({
+      layout: "auto",
+      vertex: { module: walkMod, entryPoint: "vsTrace" },
+      fragment: {
+        module: walkMod, entryPoint: "fsTrace",
+        targets: [{
+          format: this.fmt,
+          blend: {
+            color: { srcFactor: "src-alpha", dstFactor: "one-minus-src-alpha", operation: "add" },
+            alpha: { srcFactor: "one", dstFactor: "one-minus-src-alpha", operation: "add" },
+          },
+        }],
+      },
+      primitive: { topology: "triangle-list" },
       depthStencil: { format: DEPTH, depthWriteEnabled: false, depthCompare: "less" },
     });
 
@@ -267,6 +363,11 @@ export class DescentEngine {
         }],
       },
       primitive: { topology: "triangle-list" },
+      // La pasada de composición comparte adjunto de profundidad con la de las
+      // bolitas, que van dentro de ella. Un pipeline sin `depthStencil` no
+      // puede correr en un `renderPass` que sí lo tiene, así que aquí va uno
+      // que no lo lee ni lo escribe.
+      depthStencil: { format: DEPTH, depthWriteEnabled: false, depthCompare: "always" },
     });
 
     // Grupo 1 = superficie, uno por pipeline: con `layout: "auto"` cada uno
@@ -278,6 +379,8 @@ export class DescentEngine {
     this.stepGroup1 = g1(this.stepPipe);
     this.surfGroup1 = g1(this.surfPipe);
     this.walkGroup1 = g1(this.walkPipe);
+    this.headGroup1 = g1(this.headPipe);
+    this.traceGroup1 = g1(this.tracePipe);
 
     this.surfBG0 = device.createBindGroup({
       layout: this.surfPipe.getBindGroupLayout(0),
@@ -298,18 +401,54 @@ export class DescentEngine {
       Array.from({ length: MAX_STEPS }, (_, k) => sg(this.st[1], this.st[0], k)),
     ];
 
-    const wg = (p: GPUBuffer) => device.createBindGroup({
-      layout: this.walkPipe.getBindGroupLayout(0),
+    // El rastro y la bolita leen exactamente lo mismo, pero con `layout: "auto"`
+    // cada pipeline se inventa su propio layout aunque la forma coincida: hacen
+    // falta dos juegos de grupos, no uno.
+    const wg = (pipe: GPURenderPipeline) => (p: GPUBuffer) => device.createBindGroup({
+      layout: pipe.getBindGroupLayout(0),
       entries: [
         { binding: 0, resource: { buffer: this.walkerU } },
         { binding: 1, resource: { buffer: p } },
         { binding: 2, resource: { buffer: this.tint } },
       ],
     });
-    this.walkBG = [wg(this.st[0]), wg(this.st[1])];
+    const wgW = wg(this.walkPipe), wgH = wg(this.headPipe);
+    this.walkBG = [wgW(this.st[0]), wgW(this.st[1])];
+    this.headBG = [wgH(this.st[0]), wgH(this.st[1])];
 
+    // El camino no lee el estado: lee el anillo, que no hace ping-pong. Un solo
+    // grupo, y las mismas entradas 0/2/3 que declara `vsTrace`.
+    this.traceBG = device.createBindGroup({
+      layout: this.tracePipe.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.walkerU } },
+        { binding: 2, resource: { buffer: this.tint } },
+        { binding: 3, resource: { buffer: this.path } },
+      ],
+    });
+
+    // Y el que graba, que sí lo lee: bindings 0/4/5, los que usa `record`.
+    const rg = (p: GPUBuffer) => device.createBindGroup({
+      layout: this.recordPipe.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: p } },
+        { binding: 4, resource: { buffer: this.path } },
+        { binding: 5, resource: { buffer: this.traceU } },
+      ],
+    });
+    this.recordBG = [rg(this.st[0]), rg(this.st[1])];
+
+    this.camera.phi = PHI_RELIEF;
     this.loadSurface(this.opts.surface, true);
-    this.camera.frame(this.metrics.radius);
+    // 0,95× del radio envolvente. `radius` es el de la **esfera** que contiene
+    // la caja normalizada, y un relieve es una placa: vista desde 45° su
+    // proyección ocupa bastante menos que su esfera, así que encuadrar con el
+    // radio crudo deja el terreno flotando en medio de un tercio de negro.
+    // Y no menos de 0,95: la diagonal de la placa mide 2,83 de los 3,03 del
+    // radio, así que apretar más recorta las esquinas del dominio — que en la
+    // silla es justo por donde se escapan.
+    this.camera.frame(this.metrics.radius * 0.95);
+    this.homeDist = this.camera.distance;
     this.camera.attach(canvas);
     this.raf = requestAnimationFrame(this.loop);
   }
@@ -351,6 +490,20 @@ export class DescentEngine {
     this.device.queue.writeBuffer(this.st[1], 0, st);
     this.device.queue.writeBuffer(this.tint, 0, tint);
     this.device.queue.writeBuffer(this.acc, 0, new Float32Array(N_MAX * 4));
+    // El anillo entero arranca en la posición de partida, no a ceros. Las
+    // ranuras que todavía no se han escrito se dibujan igual, y a ceros el
+    // camino sale con una cola de puntos clavada en una esquina del dominio;
+    // sembrado, se apilan todos bajo la canica y no se ven hasta que hay
+    // camino de verdad que enseñar.
+    const seedPath = new Float32Array(TRACED * PATH_LEN * 2);
+    for (let i = 0; i < TRACED; i++) {
+      for (let j = 0; j < PATH_LEN; j++) {
+        seedPath[(i * PATH_LEN + j) * 2] = st[i * 2];
+        seedPath[(i * PATH_LEN + j) * 2 + 1] = st[i * 2 + 1];
+      }
+    }
+    this.device.queue.writeBuffer(this.path, 0, seedPath);
+    this.pathHead = 0;
     this.cur = 0;
     this.steps = 0;
     this.stats.done = false;
@@ -359,15 +512,38 @@ export class DescentEngine {
   }
 
   set(patch: Partial<Options>) {
-    const n0 = this.opts.n, k0 = this.opts.keep;
+    const n0 = this.opts.n, k0 = this.opts.keep, h0 = this.opts.heat;
     Object.assign(this.opts, patch);
     // Cambiar el reparto de luz con estela vieja encima daría un fogonazo:
-    // la acumulada se calibró con otra exposición.
-    if (this.opts.n !== n0 || this.opts.keep !== k0) this.clearTrail = true;
+    // la acumulada se calibró con otra exposición. Y cambiar de codificación
+    // de color dejaría media estela contando la lectura anterior, que es peor
+    // que no contar ninguna.
+    if (this.opts.n !== n0 || this.opts.keep !== k0 || this.opts.heat !== h0) {
+      this.clearTrail = true;
+    }
+    this.dirty = true;
+  }
+
+  /** Un paso, en pausa. Es el mando que convierte la sala en algo que se puede
+   *  *leer*: a ocho pasos por frame el primer acto de Rosenbrock dura dos
+   *  frames, y nadie ve lo que no puede parar. */
+  stepOnce(k = 1) {
+    this.pending = Math.min(MAX_STEPS, this.pending + k);
     this.dirty = true;
   }
 
   goHome() { this.camera.goHome(); this.dirty = true; }
+
+  /** Si la cámara ya no está donde la dejó `frame()`. Enciende la píldora de
+   *  vista completa, que sólo aparece cuando hace falta. El ángulo polar queda
+   *  **fuera** de la cuenta: lo mueve el propio botón de planta/relieve, y una
+   *  píldora que se enciende sola al cambiar de vista no dice nada. */
+  get roamed(): boolean {
+    const c = this.camera;
+    return Math.abs(c.distance - this.homeDist) > this.homeDist * 0.03
+        || Math.abs(c.theta - 0.6) > 0.03
+        || Math.hypot(c.target[0], c.target[1], c.target[2]) > this.metrics.radius * 0.02;
+  }
 
   // -------------------------------------------------------------- objetivos
 
@@ -409,21 +585,30 @@ export class DescentEngine {
   }
 
   private writeMesh(vp: Float32Array) {
-    const b = new ArrayBuffer(96);
+    const b = new ArrayBuffer(160);
     const f = new Float32Array(b);
     f.set(vp, 0);
     const d = this.camera.distance;
     const fogSpan = Math.max(d, this.metrics.radius * 0.35) * 2.3;
+    const m = this.metrics;
+    const mins = SURFACES[this.opts.surface].min;
     // Luz fija **en mundo** y no en cámara: girar alrededor del relieve tiene
     // que cambiar lo que se ve, no cómo está iluminado. Con luz de cámara, una
     // ladera se ve igual desde los dos lados y el relieve se aplana.
-    f.set([0.45, 0.78, 0.44, 0], 16);
-    f.set([this.metrics.hLo, this.metrics.hHi, d - fogSpan * 0.45, fogSpan], 20);
+    f.set([0.45, 0.78, 0.44, mins.length], 16);
+    f.set([m.hLo, m.hHi, d - fogSpan * 0.45, fogSpan], 20);
+    // Las dianas, ya en mundo xz. La conversión se hace aquí y no en el shader
+    // porque es la misma cuenta que `worldOf` y son cuatro puntos, no 36.864
+    // vértices: repetirla en el fragmento sería pagarla por píxel.
+    for (let i = 0; i < 4; i++) {
+      const p = mins[i];
+      f.set(p ? [(p[0] - m.cx) * m.k, (p[1] - m.cy) * m.k, 1, 0] : [0, 0, 0, 0], 24 + i * 4);
+    }
     this.device.queue.writeBuffer(this.meshU, 0, b);
   }
 
   private writeWalker(vp: Float32Array, w: number, h: number, live: number, keep: number) {
-    const b = new ArrayBuffer(112);
+    const b = new ArrayBuffer(144);
     const f = new Float32Array(b);
     f.set(vp, 0);
     // `projXX`/`projYY` salen de la **proyección**, no de `viewProj`:
@@ -437,11 +622,13 @@ export class DescentEngine {
     // compensar, subir el número o la persistencia lava la imagen. Mismo
     // argumento que el brillo de aristas del atlas.
     const mem = Math.min(MEM_MAX, 1 / Math.max(1 - keep, 1e-6));
-    const bright = EXPOSE * (N_DEFAULT / live) * (MEM_REF / mem);
+    const bright = EXPOSE * (N_REF / live) * (MEM_REF / mem);
     f.set([
       proj[0], proj[5], w, h,
       d - fogSpan * 0.45, fogSpan, MIN_PX, WALKER_SIZE,
-      bright, LIFT, 0, 0,
+      bright, LIFT, this.metrics.hLo, this.metrics.hHi,
+      this.opts.heat ? 1 : 0, HEAD_SCALE, PATH_LEN, this.pathHead,
+      TRACED, 0, 0, 0,
     ], 16);
     this.device.queue.writeBuffer(this.walkerU, 0, b);
   }
@@ -461,13 +648,13 @@ export class DescentEngine {
     // Planta o relieve: **es la misma cámara mirando a plomo**, no otra sala.
     // Se interpola en vez de saltar, porque el salto pierde el «esto es lo
     // mismo que estabas viendo».
-    const wantPhi = this.opts.plan ? 0.06 : 1.15;
+    const wantPhi = this.opts.plan ? PHI_PLAN : PHI_RELIEF;
     if (Math.abs(this.camera.phi - wantPhi) > 1e-3) {
       this.camera.phi += (wantPhi - this.camera.phi) * 0.12;
       this.dirty = true;
     }
 
-    const stepping = this.opts.running && this.steps < TOTAL_STEPS;
+    const stepping = (this.opts.running || this.pending > 0) && this.steps < TOTAL_STEPS;
     const moving = this.camera.moving();
     if (!stepping && !moving && !this.dirty) return;
     this.dirty = false;
@@ -505,8 +692,11 @@ export class DescentEngine {
     }
     this.ensureTargets(w, h);
 
-    const rate = this.steps < SLOW_UNTIL ? STEPS_SLOW : STEPS_FAST;
+    const rate = this.opts.running
+      ? (this.steps < SLOW_UNTIL ? STEPS_SLOW : STEPS_FAST)
+      : this.pending;
     const steps = stepping ? Math.min(rate, MAX_STEPS, TOTAL_STEPS - this.steps) : 0;
+    this.pending = 0;
     // Los uniformes de todos los pasos se escriben *antes* de codificar nada:
     // `writeBuffer` se aplica en orden de cola, así que para cuando el command
     // buffer corra, cada ranura del anillo ya tiene su número de paso.
@@ -529,6 +719,16 @@ export class DescentEngine {
         cp.dispatchWorkgroups(Math.ceil(live / 64));
         this.cur ^= 1;
       }
+      // El anillo se graba **dentro de la misma pasada**, después de los pasos:
+      // los dispatches de una pasada se ordenan entre sí, así que lo que se
+      // guarda es el estado recién calculado. `this.cur` ya apunta al búfer
+      // que acaban de escribir los pasos.
+      this.pathHead = (this.pathHead + 1) % PATH_LEN;
+      this.device.queue.writeBuffer(
+        this.traceU, 0, new Uint32Array([PATH_LEN, this.pathHead, TRACED, 0]));
+      cp.setPipeline(this.recordPipe);
+      cp.setBindGroup(0, this.recordBG[this.cur]);
+      cp.dispatchWorkgroups(1);
       cp.end();
       this.steps += steps;
       this.stats.steps = this.steps;
@@ -581,13 +781,32 @@ export class DescentEngine {
     trail.draw(6, live);
     trail.end();
 
-    // 3 — composición
+    // 3 — composición y bolitas, en la misma pasada y en este orden.
+    // Primero la estela suma su luz sobre el relieve; después las cabezas se
+    // dibujan encima con mezcla alfa. Al revés, la estela lavaría de luz las
+    // bolitas que acaba de tapar y volveríamos al confeti.
     const comp = enc.beginRenderPass({
       colorAttachments: [{ view: target, loadOp: "load", storeOp: "store" }],
+      depthStencilAttachment: {
+        view: this.depthTex!.createView(),
+        depthLoadOp: "load", depthStoreOp: "store",
+      },
     });
     comp.setPipeline(this.compPipe);
     comp.setBindGroup(0, this.compBG!);
     comp.draw(3);
+    // El camino va **antes** que las canicas: una cabeza medio tapada por el
+    // punto de rastro que acaba de dejar se lee como si fuese más pequeña.
+    if (this.opts.trace) {
+      comp.setPipeline(this.tracePipe);
+      comp.setBindGroup(0, this.traceBG);
+      comp.setBindGroup(1, this.traceGroup1);
+      comp.draw(6, TRACED * PATH_LEN);
+    }
+    comp.setPipeline(this.headPipe);
+    comp.setBindGroup(0, this.headBG[this.cur]);
+    comp.setBindGroup(1, this.headGroup1);
+    comp.draw(6, live);
     comp.end();
 
     this.device.queue.submit([enc.finish()]);
@@ -600,6 +819,7 @@ export class DescentEngine {
     this.trailTex?.destroy();
     this.st[0].destroy(); this.st[1].destroy();
     this.acc.destroy(); this.tint.destroy();
+    this.path.destroy(); this.traceU.destroy();
     this.surfU.destroy(); this.stepU.destroy();
     this.walkerU.destroy(); this.meshU.destroy();
   }

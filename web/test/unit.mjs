@@ -24,6 +24,9 @@ import { regions, core } from "../src/galaxy/regions.mjs";
 import { compile, match, MAX as PAT_MAX } from "../src/galaxy/pattern.mjs";
 import { query, invNorms, nearest } from "../src/galaxy/analogy.mjs";
 import { encodeCam, decodeCam } from "../src/galaxy/share.mjs";
+import {
+  TOY, TOY_DIMS, toyCos, miniGraph, miniStep, miniHeat, miniSplit,
+} from "../src/galaxy/guide.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const LANG = process.argv[2] || "es";
@@ -658,6 +661,60 @@ console.log(`\n— analogías ${"—".repeat(48)}`);
                   r.map((x) => `${g.labels[x.id]} ${x.cos.toFixed(2)}`).join(" · "));
     }
   }
+}
+
+// ------------------------------------------------------- las láminas de la guía
+/* Es lo único de la guía que puede estar mal sin que se note.
+   Un texto mal escrito se ve al leerlo; unos vectores de juguete donde «gato»
+   se parezca más a «lunes» que a «perro», o una simulación que no separe los
+   dos grupos, enseñan **lo contrario** de lo que dice su pie, y eso no se ve
+   leyendo el código ni mirando la lámina de reojo. */
+console.log(`\n— las láminas de la guía ${"—".repeat(35)}`);
+{
+  const { a, b, c } = TOY;
+  ok(a.length === TOY_DIMS && b.length === TOY_DIMS && c.length === TOY_DIMS,
+     `los tres vectores miden ${TOY_DIMS}`);
+
+  const cerca = toyCos(a, b);
+  const lejos = toyCos(a, c);
+  const lejosB = toyCos(b, c);
+  ok(cerca > 0.6 && cerca < 0.8,
+     "los dos vecinos se parecen como los del kNN", cerca.toFixed(2));
+  ok(lejos > 0 && lejos < 0.2,
+     "el extraño no se parece a ninguno — pero tampoco es su opuesto",
+     lejos.toFixed(2));
+  // El coseno negativo diría «son contrarias», que es otra afirmación y falsa.
+  ok(lejos > 0 && lejosB > 0, "ningún coseno de la lámina baja de cero");
+  // Simétrico contra los dos: si no, la lámina dice que «lunes» se parece a
+  // «gato» y no a «perro», que es justo lo que no está contando.
+  ok(Math.abs(lejos - lejosB) < 0.02,
+     "el extraño está igual de lejos de los dos", `${lejos.toFixed(2)} vs ${lejosB.toFixed(2)}`);
+  ok(cerca > lejos + 0.4, "y la diferencia se ve a simple vista en las barras");
+
+  // La simulación de muelles: los dos barrios tienen que **salir**, y nadie se
+  // los ha dicho — están sólo en quién tira de quién.
+  const m = miniGraph(7);
+  const antes = miniSplit(m);
+  ok(Math.abs(antes.inside - antes.across) < 0.15,
+     "al soltar, dentro y fuera miden casi lo mismo",
+     `${antes.inside.toFixed(2)} vs ${antes.across.toFixed(2)}`);
+  miniStep(m, 600);
+  const luego = miniSplit(m);
+  ok(luego.across > luego.inside * 1.4,
+     "asentado, los de un grupo están mucho más juntos entre sí",
+     `${luego.inside.toFixed(2)} vs ${luego.across.toFixed(2)}`);
+  ok(miniHeat(m) < 2e-4, "y la lámina se queda quieta: deja de pedir cuadros",
+     miniHeat(m).toExponential(1));
+  ok([...m.pos].every(Number.isFinite), "ningún nodo sale disparado a NaN");
+
+  // Otra semilla es otro revuelto, no otra película: el botón «soltar otra vez»
+  // tiene que dar un reparto distinto y llegar al mismo sitio.
+  const m2 = miniGraph(1234);
+  ok(m2.pos.some((v, i) => Math.abs(v - miniGraph(7).pos[i]) > 1e-6),
+     "cada semilla suelta los nodos desde otro sitio");
+  miniStep(m2, 600);
+  const otro = miniSplit(m2);
+  ok(otro.across > otro.inside * 1.4, "y los barrios salen igual desde otro revuelto");
 }
 
 // ------------------------------------------------------------ vista en la url

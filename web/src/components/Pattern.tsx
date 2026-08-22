@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Galaxy } from "../galaxy/loader";
 import type { Index } from "../galaxy/search.mjs";
 import { match, LIST, MAX } from "../galaxy/pattern.mjs";
+import Foot, { type WhyLink } from "./Foot";
 
 /** Familias: encender de golpe todas las palabras que comparten una forma.
  *
@@ -36,7 +37,7 @@ export interface PatternCopy {
 }
 
 export default function Pattern({
-  g, index, zoneCss, t, open, onOpen, onMatch, onClear,
+  g, index, zoneCss, t, why, open, onOpen, onMatch, onClear,
 }: {
   g: Galaxy;
   index: Index;
@@ -48,6 +49,8 @@ export default function Pattern({
   onMatch: (ids: number[]) => void;
   /** Soltarlo: la caja se ha quedado vacía. */
   onClear: () => void;
+  /** El «por qué» del pie: abre el capítulo de dónde salen los números. */
+  why?: WhyLink;
   }) {
   const [q, setQ] = useState("");
   const [live, setLive] = useState("");   // lo que de verdad se ha buscado
@@ -124,7 +127,7 @@ export default function Pattern({
                   </li>
                 ))}
               </ul>
-              <p className="foot">{t.foot}</p>
+              <Foot why={why}>{t.foot}</Foot>
             </>
           )}
 

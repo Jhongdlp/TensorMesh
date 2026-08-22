@@ -191,10 +191,12 @@ function FigContext({ t }: { t: FigCopy }) {
  *  sólo responde al puntero deja fuera a quien navega con teclado, y este es el
  *  mando que hay que tocar para entender el capítulo.
  *
- *  @param ref el parecido típico entre vecinos **de esta galaxia**, si está
- *  cargada. Sin una referencia medida, 0,50 no significa nada.
+ *  @param near el parecido típico entre vecinos **de esta galaxia**, si está
+ *  cargada. Sin una referencia medida, 0,50 no significa nada. Se llama `near`
+ *  y no `ref` porque `ref` es una palabra reservada de React en las props de un
+ *  componente y un número ahí es una trampa esperando a la próxima versión.
  */
-function FigCos({ t, ref }: { t: FigCopy; ref?: number }) {
+function FigCos({ t, near }: { t: FigCopy; near?: number }) {
   const [deg, setDeg] = useState(38);
   const box = useRef<SVGSVGElement>(null);
   const OX = 96, OY = 96, R = 66;
@@ -281,14 +283,14 @@ function FigCos({ t, ref }: { t: FigCopy; ref?: number }) {
           <text x="18" y="4" className="gd-art-n">1 · {t.same}</text>
           <text x="18" y="62" className="gd-art-n">0 · {t.none}</text>
           <text x="18" y="119" className="gd-art-n">−1 · {t.opposite}</text>
-          {ref !== undefined && (
+          {near !== undefined && (
             <>
               <line
-                x1="-4" y1={(1 - ref) * 58} x2="14" y2={(1 - ref) * 58}
+                x1="-4" y1={(1 - near) * 58} x2="14" y2={(1 - near) * 58}
                 stroke="#fff" strokeWidth="1" strokeDasharray="2 2"
               />
-              <text x="18" y={(1 - ref) * 58 + 4} className="gd-art-n">
-                {ref.toFixed(2).replace(".", ",")} · {t.neigh}
+              <text x="18" y={(1 - near) * 58 + 4} className="gd-art-n">
+                {near.toFixed(2).replace(".", ",")} · {t.neigh}
               </text>
             </>
           )}
@@ -545,12 +547,24 @@ function FigSense({ t }: { t: FigCopy }) {
 
 type FigKey = "bars" | "ctx" | "cos" | "flat" | "spring" | "ramp" | "ana" | "sense";
 
-const FIGS: Record<FigKey, (p: { t: FigCopy; ref?: number }) => JSX.Element> = {
+const FIGS: Record<FigKey, (p: { t: FigCopy; near?: number }) => JSX.Element> = {
   bars: FigBars, ctx: FigContext, cos: FigCos, flat: FigFlat,
   spring: FigSpring, ramp: FigRamp, ana: FigAnalogy, sense: FigSense,
 };
 
+/** Los capítulos, por nombre. Es lo que viaja en `at`: los enlaces
+ *  contextuales del atlas —el pie de la ficha, el de la leyenda, el del
+ *  comparador— piden un capítulo **por nombre y no por número**, porque un
+ *  índice se desplaza en cuanto se inserta un capítulo y entonces el «por qué»
+ *  del coseno abriría el de los muelles sin que nadie lo note. */
+export type ChapterId =
+  | "nums" | "where" | "cos" | "dims" | "springs"
+  | "colour" | "math" | "limits" | "do" | "glossary";
+
 interface Chapter {
+  /** El mismo nombre en los dos idiomas: un enlace hecho en español tiene que
+   *  abrir el mismo capítulo con la galaxia inglesa puesta. */
+  id: ChapterId;
   /** Rótulo corto del índice. Dos palabras: la columna mide 9 rem. */
   tab: string;
   head: string;
@@ -566,6 +580,7 @@ interface Chapter {
 
 const ES: Chapter[] = [
   {
+    id: "nums",
     tab: "los números",
     head: "Una palabra es una lista de números",
     lede: "Un embedding no es una idea abstracta: es una fila de 300 números, y hay una por palabra.",
@@ -578,6 +593,7 @@ const ES: Chapter[] = [
     fig: "bars",
   },
   {
+    id: "where",
     tab: "de dónde salen",
     head: "Los números salen de la compañía",
     lede: "Dime con quién apareces y te diré qué eres. Ése es todo el truco, y es de 1954.",
@@ -590,6 +606,7 @@ const ES: Chapter[] = [
     fig: "ctx",
   },
   {
+    id: "cos",
     tab: "el parecido",
     head: "Parecerse es un ángulo",
     lede: "Dos palabras se parecen si sus flechas apuntan al mismo sitio. Lo largas que sean da igual.",
@@ -602,6 +619,7 @@ const ES: Chapter[] = [
     fig: "cos",
   },
   {
+    id: "dims",
     tab: "300 dimensiones",
     head: "300 dimensiones no se pueden mirar",
     lede: "Y aplanarlas cuesta caro: siempre se junta algo que estaba lejos.",
@@ -614,6 +632,7 @@ const ES: Chapter[] = [
     fig: "flat",
   },
   {
+    id: "springs",
     tab: "los muelles",
     head: "Cómo se colocó esta galaxia",
     lede: "Con muelles. Cada palabra tira de las que más se le parecen y empuja a todas las demás.",
@@ -626,6 +645,7 @@ const ES: Chapter[] = [
     fig: "spring",
   },
   {
+    id: "colour",
     tab: "el color",
     head: "El color es el barrio",
     lede: "Los puntos son blancos. Todo el color lo ponen las hebras, y no es decoración.",
@@ -638,6 +658,7 @@ const ES: Chapter[] = [
     fig: "ramp",
   },
   {
+    id: "math",
     tab: "la aritmética",
     head: "Restar y sumar significados",
     lede: "rey − hombre + mujer. La resta de dos vectores es una dirección, y una dirección se puede aplicar a un tercero.",
@@ -650,6 +671,7 @@ const ES: Chapter[] = [
     fig: "ana",
   },
   {
+    id: "limits",
     tab: "lo que no dice",
     head: "Lo que este mapa no dice",
     lede: "Cuatro cosas que conviene tener delante antes de sacar conclusiones de un dibujo bonito.",
@@ -666,6 +688,7 @@ const ES: Chapter[] = [
     fig: "sense",
   },
   {
+    id: "do",
     tab: "qué hacer",
     head: "Qué puedes hacer aquí",
     lede: "Nueve gestos. Todo lo que se coge se suelta con «Esc», con un clic en el vacío o con el botón de la píldora de arriba.",
@@ -685,6 +708,7 @@ const ES: Chapter[] = [
     note: "Si te pierdes: el botón de vista completa, la tecla «Inicio», o la píldora que aparece en el lienzo en cuanto te alejas.",
   },
   {
+    id: "glossary",
     tab: "glosario",
     head: "Glosario",
     lede: "Las ocho palabras que hacen falta para leer el resto del atlas.",
@@ -705,6 +729,7 @@ const ES: Chapter[] = [
 
 const EN: Chapter[] = [
   {
+    id: "nums",
     tab: "the numbers",
     head: "A word is a list of numbers",
     lede: "An embedding is not an abstract idea: it is a row of 300 numbers, one per word.",
@@ -717,6 +742,7 @@ const EN: Chapter[] = [
     fig: "bars",
   },
   {
+    id: "where",
     tab: "where from",
     head: "The numbers come from the company",
     lede: "You shall know a word by the company it keeps. That is the whole trick, and it dates from 1954.",
@@ -729,6 +755,7 @@ const EN: Chapter[] = [
     fig: "ctx",
   },
   {
+    id: "cos",
     tab: "likeness",
     head: "Being alike is an angle",
     lede: "Two words are alike if their arrows point the same way. How long they are does not matter.",
@@ -741,6 +768,7 @@ const EN: Chapter[] = [
     fig: "cos",
   },
   {
+    id: "dims",
     tab: "300 dimensions",
     head: "300 dimensions cannot be looked at",
     lede: "And flattening them is expensive: something that was far apart always ends up together.",
@@ -753,6 +781,7 @@ const EN: Chapter[] = [
     fig: "flat",
   },
   {
+    id: "springs",
     tab: "the springs",
     head: "How this galaxy was arranged",
     lede: "With springs. Each word pulls on the ones it most resembles and pushes everything else away.",
@@ -765,6 +794,7 @@ const EN: Chapter[] = [
     fig: "spring",
   },
   {
+    id: "colour",
     tab: "the colour",
     head: "The colour is the neighbourhood",
     lede: "The dots are white. All the colour comes from the threads, and it is not decoration.",
@@ -777,6 +807,7 @@ const EN: Chapter[] = [
     fig: "ramp",
   },
   {
+    id: "math",
     tab: "the arithmetic",
     head: "Subtracting and adding meanings",
     lede: "king − man + woman. The difference of two vectors is a direction, and a direction can be applied to a third.",
@@ -789,6 +820,7 @@ const EN: Chapter[] = [
     fig: "ana",
   },
   {
+    id: "limits",
     tab: "what it omits",
     head: "What this map does not say",
     lede: "Four things worth keeping in view before drawing conclusions from a pretty picture.",
@@ -805,6 +837,7 @@ const EN: Chapter[] = [
     fig: "sense",
   },
   {
+    id: "do",
     tab: "what to do",
     head: "What you can do here",
     lede: "Nine gestures. Everything you pick up is let go with “Esc”, with a click on empty space, or with the button on the pill at the top.",
@@ -824,6 +857,7 @@ const EN: Chapter[] = [
     note: "If you get lost: the whole-galaxy button, the “Home” key, or the pill that appears on the canvas as soon as you drift away.",
   },
   {
+    id: "glossary",
     tab: "glossary",
     head: "Glossary",
     lede: "The eight words you need to read the rest of the atlas.",
@@ -1002,13 +1036,19 @@ const TOOL_ICOS: (() => JSX.Element)[] = [
 /* =========================== el cuadro =========================== */
 
 export default function Guide({
-  lang, ref, onClose, onIntro,
+  lang, near, at, onClose, onIntro,
 }: {
   lang: string;
   /** Parecido típico entre vecinos de la galaxia cargada, para la regla del
    *  coseno. Es opcional a propósito: la guía se abre igual antes de que los
    *  binarios hayan terminado de bajar. */
-  ref?: number;
+  near?: number;
+  /** Por qué capítulo abrir. La guía se abre por dos sitios muy distintos: el
+   *  botón del cajón, que es «quiero leerla», y el «por qué» que cuelga del pie
+   *  de un panel, que es «no entiendo *este* número». El segundo tiene que caer
+   *  dentro, no en la portada: llevar a alguien al capítulo uno cuando preguntó
+   *  por el coseno es contestarle con un índice. */
+  at?: ChapterId;
   onClose: () => void;
   onIntro: () => void;
 }) {
@@ -1016,7 +1056,13 @@ export default function Guide({
   const t = UI[lang as keyof typeof UI] ?? UI.es;
   const fc = FIG_COPY[lang] ?? FIG_COPY.es;
 
-  const [i, setI] = useState(0);
+  // El capítulo de entrada se resuelve **una vez**, en el estado inicial: si
+  // fuese un efecto sobre `at`, cambiar de capítulo a mano y que algo volviese
+  // a renderizar de fuera devolvería al lector donde no estaba.
+  const [i, setI] = useState(() => {
+    const k = at ? chapters.findIndex(c => c.id === at) : 0;
+    return k < 0 ? 0 : k;
+  });
   const boxRef = useRef<HTMLDivElement>(null);
   const pageRef = useRef<HTMLDivElement>(null);
   const from = useRef<Element | null>(null);
@@ -1114,7 +1160,7 @@ export default function Guide({
             <h2 className="gd-head" id="gd-head">{ch.head}</h2>
             <p className="gd-lede">{ch.lede}</p>
 
-            {Fig && <div className="gd-stage" key={ch.tab}><Fig t={fc} ref={ref} /></div>}
+            {Fig && <div className="gd-stage" key={ch.tab}><Fig t={fc} near={near} /></div>}
 
             {ch.body.map((p, k) => <p className="gd-body" key={k}>{p}</p>)}
 

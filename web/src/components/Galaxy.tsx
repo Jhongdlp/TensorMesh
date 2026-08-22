@@ -10,7 +10,7 @@ import { buildIndex, resolve } from "../galaxy/search.mjs";
 import { typing } from "../galaxy/keys.mjs";
 import { shortestPath, hops } from "../galaxy/path.mjs";
 import { Vectors } from "../galaxy/vectors";
-import { MAX_WORDS } from "../galaxy/compare.mjs";
+import { MAX_WORDS, typical } from "../galaxy/compare.mjs";
 import Compare from "./Compare";
 import Welcome, { introPending } from "./Welcome";
 import LandingPage from "./LandingPage";
@@ -18,6 +18,12 @@ import Legend from "./Legend";
 import Pattern from "./Pattern";
 import Analogy from "./Analogy";
 import Start, { common } from "./Start";
+import {
+  IcoChevron, IcoControls, IcoHelp, IcoOrbit, IcoFly, IcoFit,
+  IcoCompare, IcoExpand, IcoShrink, IcoShare, IcoKeys,
+} from "./icons";
+import Guide, { type ChapterId } from "./Guide";
+import Foot from "./Foot";
 import { encodeCam, decodeCam } from "../galaxy/share.mjs";
 import type { CamState } from "../galaxy/gpu/camera";
 
@@ -39,6 +45,12 @@ const COPY = {
         heldGroup: (k: number) => `${k} palabras resaltadas`,
         keys: "teclas",
         guide: "qué es esto",
+        // «qué es esto» abre la presentación —cuatro pantallas— y «la guía»
+        // abre los diez capítulos. Dos rótulos distintos porque son dos
+        // sitios distintos: con el mismo nombre, quien ya vio la
+        // presentación no vuelve a pulsar y no descubre nunca la guía.
+        guideLong: "guía del atlas",
+        why: "por qué",
         nbrs: "vecinos más cercanos",
         pathTo: "camino hasta…", pathHead: "camino", pathBack: "volver a la palabra",
         steps: (k: number) => `${k} ${k === 1 ? "salto" : "saltos"}`,
@@ -114,7 +126,7 @@ const COPY = {
           note: "clica cualquier punto de la galaxia, o entra por aquí",
           rnd: "palabra al azar",
           road: "camino sorpresa",
-          guide: "qué es esto",
+          guide: "la guía del atlas",
           foot: "cada punto es una palabra ·",
           ex: ["amor", "guerra", "azul", "perro", "música", "dinero"],
         },
@@ -131,6 +143,8 @@ const COPY = {
         heldGroup: (k: number) => `${k} words highlighted`,
         keys: "keys",
         guide: "what is this",
+        guideLong: "atlas guide",
+        why: "why",
         nbrs: "nearest neighbours",
         pathTo: "path to…", pathHead: "path", pathBack: "back to the word",
         steps: (k: number) => `${k} ${k === 1 ? "hop" : "hops"}`,
@@ -206,112 +220,39 @@ const COPY = {
           note: "click any dot in the galaxy, or come in through here",
           rnd: "random word",
           road: "surprise path",
-          guide: "what is this",
+          guide: "the atlas guide",
           foot: "every dot is a word ·",
           ex: ["love", "war", "blue", "dog", "music", "money"],
         },
         missing: (q: string, n: number) => `“${q}” is not among this galaxy's ${n} words` },
 };
 
-/** Iconos de la barra. Trazo en `currentColor` y `24×24`, dibujados a mano y
- *  no traídos de una librería: son cuatro, y una dependencia de iconos pesa
- *  más que estas líneas. El `stroke-width` es 1.5 para que a 15 px no se
- *  empasten — a 2 el círculo de la órbita se cierra en una mancha. */
-const ico = {
-  fill: "none", stroke: "currentColor", strokeWidth: 1.8,
-  strokeLinecap: "round" as const, strokeLinejoin: "round" as const,
-};
+/** La marca del guía de primeros gestos, en `localStorage`. Lleva versión como
+ *  la de la presentación: subirla es la única forma de volver a enseñárselo a
+ *  quien ya lo pasó, si algún día cambian los gestos. */
+const COACH_KEY = "atlas.coach.v1";
 
-const IcoChevron = ({ open }: { open: boolean }) => (
-  <svg viewBox="0 0 24 24" width="17" height="17" {...ico} aria-hidden="true">
-    <path d={open ? "M14 6l-6 6 6 6" : "M10 6l6 6-6 6"} />
-  </svg>
-);
+/** ¿Toca enseñar los primeros gestos? Envuelto, como todo lo que toca
+ *  `localStorage`: en una ventana privada el propio acceso lanza, y una
+ *  excepción leyendo una preferencia no puede llevarse por delante el visor. */
+function coachPending(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return localStorage.getItem(COACH_KEY) !== "1";
+  } catch {
+    // Sin sitio donde anotarlo se enseña igual: una línea de más por visita es
+    // menos malo que una galaxia que nunca dice cómo se toca.
+    return true;
+  }
+}
 
-const IcoControls = () => (
-  <svg viewBox="0 0 24 24" width="17" height="17" {...ico} aria-hidden="true">
-    <path d="M4 6h16M4 12h16M4 18h16" />
-    <circle cx="8" cy="6" r="2.2" fill="currentColor" />
-    <circle cx="15" cy="12" r="2.2" fill="currentColor" />
-    <circle cx="10" cy="18" r="2.2" fill="currentColor" />
-  </svg>
-);
+/** Da el guía por aprendido. Nunca lanza. */
+function coachDone() {
+  try { localStorage.setItem(COACH_KEY, "1"); } catch { /* sin sitio donde anotarlo */ }
+}
 
-/** Qué es esto: la presentación. Interrogante dibujado con el mismo trazo que
- *  el resto, no el glifo «?» de la tipografía — a 15 px dentro de un botón de
- *  1,7 rem el glifo se descuelga de la caja y no centra con los otros cuatro. */
-const IcoHelp = () => (
-  <svg viewBox="0 0 24 24" width="17" height="17" {...ico} aria-hidden="true">
-    <circle cx="12" cy="12" r="8.5" />
-    <path d="M9.7 9.4a2.4 2.4 0 014.6.9c0 1.6-2.3 2-2.3 3.4" />
-    <path d="M12 17.1v.01" strokeWidth="2" />
-  </svg>
-);
-
-/** Órbita: el cuerpo quieto y la vista dando la vuelta alrededor. */
-const IcoOrbit = () => (
-  <svg viewBox="0 0 24 24" width="17" height="17" {...ico} aria-hidden="true">
-    <circle cx="12" cy="12" r="3" />
-    <ellipse cx="12" cy="12" rx="9.5" ry="4.5" transform="rotate(-24 12 12)" />
-  </svg>
-);
-
-/** Vuelo: la cámara suelta, avanzando. */
-const IcoFly = () => (
-  <svg viewBox="0 0 24 24" width="17" height="17" {...ico} aria-hidden="true">
-    <path d="M4 12l16-7-5.5 7 5.5 7z" />
-  </svg>
-);
-
-/** Vista completa: el encuadre que abarca la galaxia entera. */
-const IcoFit = () => (
-  <svg viewBox="0 0 24 24" width="17" height="17" {...ico} aria-hidden="true">
-    <path d="M4 9V5.5A1.5 1.5 0 015.5 4H9M15 4h3.5A1.5 1.5 0 0120 5.5V9M20 15v3.5a1.5 1.5 0 01-1.5 1.5H15M9 20H5.5A1.5 1.5 0 014 18.5V15" />
-    <circle cx="12" cy="12" r="2.5" />
-  </svg>
-);
-
-/** Comparar: dos cuerpos y la cuerda que los mide. */
-const IcoCompare = () => (
-  <svg viewBox="0 0 24 24" width="17" height="17" {...ico} aria-hidden="true">
-    <circle cx="7" cy="8" r="3" />
-    <circle cx="17" cy="16" r="3" />
-    <path d="M9.2 10.2l5.6 3.6" strokeDasharray="2 1.6" />
-  </svg>
-);
-
-/** Pantalla completa: las cuatro esquinas abriéndose. Es el icono que todo el
- *  mundo ya sabe leer — reproductores de vídeo, mapas—, así que no hay nada que
- *  inventar aquí. */
-const IcoExpand = () => (
-  <svg viewBox="0 0 24 24" width="17" height="17" {...ico} aria-hidden="true">
-    <path d="M9 4H4.8A.8.8 0 004 4.8V9M15 4h4.2a.8.8 0 01.8.8V9M20 15v4.2a.8.8 0 01-.8.8H15M9 20H4.8a.8.8 0 01-.8-.8V15" />
-  </svg>
-);
-
-/** Y las mismas cerrándose. */
-const IcoShrink = () => (
-  <svg viewBox="0 0 24 24" width="17" height="17" {...ico} aria-hidden="true">
-    <path d="M4 9h4.2a.8.8 0 00.8-.8V4M20 9h-4.2a.8.8 0 01-.8-.8V4M15 20v-4.2a.8.8 0 01.8-.8H20M9 20v-4.2a.8.8 0 00-.8-.8H4" />
-  </svg>
-);
-
-/** Compartir: un punto y los dos hilos que salen de él. */
-const IcoShare = () => (
-  <svg viewBox="0 0 24 24" width="17" height="17" {...ico} aria-hidden="true">
-    <circle cx="6" cy="12" r="2.4" />
-    <circle cx="17" cy="6" r="2.4" />
-    <circle cx="17" cy="18" r="2.4" />
-    <path d="M8.1 10.9l6.8-3.7M8.1 13.1l6.8 3.7" />
-  </svg>
-);
-
-const IcoKeys = () => (
-  <svg viewBox="0 0 24 24" width="17" height="17" {...ico} aria-hidden="true">
-    <rect x="3" y="6" width="18" height="12" rx="2" />
-    <path d="M7 10h2M11 10h2M15 10h2M7 14h10" />
-  </svg>
-);
+/* Los iconos de la tira viven en `components/icons.tsx`: los comparten la
+   galaxia y la sala del descenso, que usan el mismo mueble. */
 
 /** Lo que la vista necesita, sea cual sea el motor debajo. */
 interface Viewer {
@@ -419,6 +360,12 @@ export default function GalaxyView({ lang: initial = "es", initialView }: { lang
    *  el inicializador y no en un efecto: puesta después del primer pintado,
    *  aparecería de golpe encima de una galaxia ya dibujada. */
   const [intro, setIntro] = useState(false);
+  /** La guía larga. No es lo mismo que la presentación y por eso es otro estado:
+   *  la presentación son cuatro pantallas que se pasan de una vez y salen solas
+   *  la primera visita; la guía son diez capítulos que **no salen nunca solos**
+   *  y a los que se entra por un capítulo concreto. Guarda el capítulo, no un
+   *  booleano: `null` es cerrada, y una cadena es «ábrete por aquí». */
+  const [guide, setGuide] = useState<ChapterId | null>(null);
   const [view, setView] = useState<'landing' | 'app'>(() => {
     if (initialView) return initialView;
     if (typeof window === "undefined") return "landing";
@@ -441,6 +388,28 @@ export default function GalaxyView({ lang: initial = "es", initialView }: { lang
    *  siempre estorba, y uno que aparece justo cuando uno se ha perdido se lee
    *  como la salida que es. */
   const [roamed, setRoamed] = useState(false);
+  /** Los primeros gestos, sobre el lienzo.
+   *
+   *  La presentación cuenta los cuatro gestos una vez y se va; a partir de ahí
+   *  el lienzo —que es el 90% de la pantalla y lo único que hay que tocar— no
+   *  dice nada. Quien la saltó, quien vuelve una semana después o quien entró
+   *  por un enlace compartido se queda delante de cincuenta mil puntos sin una
+   *  sola instrucción, y el panel de arranque, que sí la lleva, está en el raíl
+   *  derecho: no es donde miran los ojos.
+   *
+   *  Es una línea, no un tutorial. Dice **el gesto siguiente** y sólo ése:
+   *  primero cómo abrir una palabra, y con una abierta, cómo soltarla — que es
+   *  la mitad que nadie encuentra sola. Se retira **para siempre** en cuanto
+   *  alguien completa el ciclo (coger y soltar), porque a partir de ahí ya no
+   *  enseña nada y sólo tapa galaxia. Los dos textos ya existían en `COPY`
+   *  (`hint`, `hintOut`) sin que nada los pintara.
+   */
+  const [coach, setCoach] = useState(coachPending);
+  /** ¿Ha llegado a coger algo? Es lo que distingue «todavía no ha empezado» de
+   *  «ya ha soltado», que son el mismo estado visto desde fuera —las manos
+   *  vacías— y significan lo contrario. En una `ref` y no en el estado: no
+   *  tiene que provocar pintado por sí sola. */
+  const heldOnce = useRef(false);
   /** Modo inmersivo: pantalla completa del navegador **y** la interfaz fuera.
    *  Son dos cosas y van juntas a propósito: quitar la barra del navegador y
    *  dejar los paneles tapando un tercio del lienzo no es pantalla completa. */
@@ -468,6 +437,21 @@ export default function GalaxyView({ lang: initial = "es", initialView }: { lang
   // Índice de prefijos sin tildes. Se construye una vez por galaxia, junto a la
   // carga: ordenar 50.000 claves ya plegadas cuesta menos que el propio fetch.
   const index = useMemo(() => (g ? buildIndex(g) : null), [g]);
+  /** El parecido típico entre vecinos de **esta** galaxia: la mediana de los
+   *  pesos del CSR. La guía lo pinta en la regla del coseno, y sin él un 0,50
+   *  no significa nada — es el mismo número que el comparador usa de línea de
+   *  referencia, y por eso sale de la misma función y no de una copia. */
+  const ref = useMemo(() => (g ? typical(g) : undefined), [g]);
+
+  /** El ciclo del guía de primeros gestos: coger algo y volver a soltarlo.
+   *  Al cerrarse, se retira para siempre. Mira `sel` y `lit` y no sólo `sel`
+   *  porque un grupo resaltado —una región, una familia— también es algo que
+   *  se tiene cogido, y también hay que saber soltarlo. */
+  useEffect(() => {
+    if (!coach) return;
+    if (sel !== null || lit) { heldOnce.current = true; return; }
+    if (heldOnce.current) { setCoach(false); coachDone(); }
+  }, [coach, sel, lit]);
   // Fuera del `map`: recalcularlo por fila recorre el CSR del nodo otra vez.
   const road = useMemo(() => (g && path ? hops(g, path) : null), [g, path]);
   /** El lector de `vecs.bin`. Uno por galaxia: guarda una caché de vectores ya
@@ -1015,8 +999,28 @@ export default function GalaxyView({ lang: initial = "es", initialView }: { lang
 
   const fmt = (n: number) => n.toLocaleString(lang === "en" ? "en" : "es");
 
+  /** ¿Está puesta la píldora de vista completa? Se calcula una vez porque hay
+   *  dos cosas que dependen de ella: la propia píldora y el guía de primeros
+   *  gestos, que comparte con ella el centro del borde de abajo y tiene que
+   *  apartarse. Duplicar la condición era garantizar que se solaparan en cuanto
+   *  una de las dos cambiase. */
+  const homeShown = !!(g && (roamed || sel !== null || lit || path));
+
+  /** Abrir la guía por un capítulo. Cierra la presentación si estaba puesta:
+   *  dos cuadros modales a la vez es un cuadro modal que no se puede cerrar. */
+  const openGuide = useCallback((at: ChapterId) => {
+    setIntro(false);
+    setGuide(at);
+  }, []);
+
+  /** El «por qué» de un pie, listo para pasárselo a un panel. */
+  const why = useCallback(
+    (at: ChapterId) => ({ t: t.why, go: () => openGuide(at) }),
+    [t.why, openGuide],
+  );
+
   return (
-    <div className={"galaxy-root" + (side ? " side-open" : "") + (cmp ? " cmp-open" : "") +
+    <div className={"shell galaxy-root" + (side ? " side-open" : "") + (cmp ? " cmp-open" : "") +
                     (zen ? " zen" : "") + (view === 'landing' ? " in-landing" : " in-app")}>
       <canvas
         ref={canvasRef}
@@ -1066,13 +1070,26 @@ export default function GalaxyView({ lang: initial = "es", initialView }: { lang
         </span>
       )}
 
+      {/* El guía de primeros gestos. Una línea, abajo, sin marco y sin ratón:
+          no es un mando, es un rótulo. Dice el gesto **siguiente** —abrir una
+          palabra, o soltarla— y desaparece para siempre en cuanto alguien
+          completa el ciclo. Se calla ante cualquier cosa que ya esté hablando:
+          el modo inmersivo, la presentación, la guía, la deriva del atractor y
+          el aviso de un instante. Y sube un escalón cuando la píldora de vista
+          completa ocupa su sitio: las dos viven abajo en el centro. */}
+      {coach && g && !zen && !intro && !guide && !attract && !toast && (
+        <p className={"coach" + (homeShown ? " coach-up" : "")} aria-live="polite">
+          {sel !== null || lit ? t.hintOut : t.hint}
+        </p>
+      )}
+
       {/* La vuelta al encuadre completo, con el nombre escrito.
           El icono de la barra existe desde siempre y aun así perderse era el
           estado más fácil de alcanzar del atlas: un icono de 15 px en una tira
           de cinco no se lee como «volver». Esta píldora **sólo aparece cuando
           hace falta** —cuando la cámara ya no está en su sitio o hay algo
           cogido— y por eso se puede permitir ser grande y decir la palabra. */}
-      {g && (roamed || sel !== null || lit || path) && (
+      {homeShown && (
         <button className="go-home" onClick={goHome}>
           <IcoFit />
           <span>{t.whole}</span>
@@ -1245,14 +1262,18 @@ export default function GalaxyView({ lang: initial = "es", initialView }: { lang
             </svg>
             <span>Volver a Inicio</span>
           </a>
+          {/* El botón ancho del cajón abre la **guía**, no la presentación: es
+              el único sitio con espacio para escribir la palabra, y la
+              presentación ya tiene su `?` en la tira de al lado. Antes los dos
+              llevaban al mismo cuadro, así que la guía no tenía puerta. */}
           <button
             className="guide-btn"
-            onClick={() => setIntro(true)}
-            aria-label={t.guide}
-            title={t.guide}
+            onClick={() => openGuide("nums")}
+            aria-label={t.guideLong}
+            title={t.guideLong}
           >
             <IcoHelp />
-            <span>{t.guide}</span>
+            <span>{t.guideLong}</span>
           </button>
           <div className="langs" role="group">
             {LANGS.map(l => (
@@ -1303,6 +1324,7 @@ export default function GalaxyView({ lang: initial = "es", initialView }: { lang
               vec={vec}
               zoneCss={zones.css}
               t={t.cmp}
+              why={why("dims")}
               ids={cmpIds}
               onIds={setCmpIds}
               onWord={id => choose(id)}
@@ -1319,6 +1341,7 @@ export default function GalaxyView({ lang: initial = "es", initialView }: { lang
               g={g}
               zoneCss={zones.css}
               t={t.zones}
+              why={why("colour")}
               open={zonesOn}
               onOpen={setZonesOn}
               onPick={(members, frame) => showGroup(members, frame)}
@@ -1331,6 +1354,7 @@ export default function GalaxyView({ lang: initial = "es", initialView }: { lang
               index={index}
               zoneCss={zones.css}
               t={t.pat}
+              why={why("where")}
               open={patOn}
               onOpen={setPatOn}
               onMatch={ids => showGroup(ids)}
@@ -1344,6 +1368,7 @@ export default function GalaxyView({ lang: initial = "es", initialView }: { lang
               vec={vec}
               zoneCss={zones.css}
               t={t.ana}
+              why={why("math")}
               open={anaOn}
               onOpen={setAnaOn}
               onWord={id => choose(id)}
@@ -1428,7 +1453,7 @@ export default function GalaxyView({ lang: initial = "es", initialView }: { lang
             t={t.start}
             onWord={id => choose(id)}
             onPath={(a, b) => show(a, b)}
-            onGuide={() => setIntro(true)}
+            onGuide={() => openGuide("nums")}
           />
         )}
         {sel !== null && g && (
@@ -1527,12 +1552,36 @@ export default function GalaxyView({ lang: initial = "es", initialView }: { lang
                 </li>
               ))}
             </ol>
-            <p className="foot">{t.foot}</p>
+            {/* El pie de la ficha es el que más falta hace de los cinco: es el
+                único sitio donde se explica qué es el 0,72 que hay al lado de
+                cada vecino, y hasta ahora se explicaba sin poder ampliarse. */}
+            <Foot why={why("cos")}>{t.foot}</Foot>
           </aside>
         )}
       </div>
 
-      {intro && <Welcome lang={lang} onClose={() => setIntro(false)} />}
+      {intro && (
+        <Welcome
+          lang={lang}
+          onClose={() => setIntro(false)}
+          onGuide={() => openGuide("nums")}
+        />
+      )}
+
+      {/* La guía larga. Nunca sale sola: se entra por el botón del cajón, por
+          el panel de arranque, por el pie de cualquier panel y por la última
+          pantalla de la presentación. Las dos se conocen —`onIntro` vuelve a la
+          presentación— porque son la versión corta y la larga de lo mismo, y
+          quien llega a una por error tiene que poder cruzar a la otra. */}
+      {guide && (
+        <Guide
+          lang={lang}
+          near={ref}
+          at={guide}
+          onClose={() => setGuide(null)}
+          onIntro={() => { setGuide(null); setIntro(true); }}
+        />
+      )}
 
       {/* CC BY-SA 3.0 exige atribución: es el único requisito legal del proyecto */}
       <p className="attrib">

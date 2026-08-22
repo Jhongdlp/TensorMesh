@@ -73,9 +73,25 @@ import LandingPage from "../components/LandingPage.tsx";
         -webkit-font-smoothing: antialiased;
       }
 
+      /* **Absoluto, no fijo.** `fixed` era el fallo del que se quejaba todo lo
+         demás: la silueta se quedaba clavada en el sitio mientras su propio
+         titular se iba hacia arriba —el texto está *colocado sobre* la
+         silueta, así que verlos separarse es ver romperse el diseño— y la
+         costura, que es la continuación de su última fila, se despegaba de
+         ella y acababa flotando sobre un dibujo congelado. Sólo cuadraban en
+         `scrollTop = 0`, que es justo cuando la costura está debajo del
+         doblez y no se ve.
+
+         La portada es **un cuadro**: se va como un cuadro, de una pieza y con
+         su borde inferior deshilachado por delante. Nada de parallax entre el
+         texto y la rejilla, por lo mismo — un dedo de desfase y el titular se
+         sale de su masa clara. */
       .landing-grid-bg {
-        position: fixed;
-        inset: 0;
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100vh;
         display: grid;
         z-index: 10001;
         pointer-events: none;
@@ -290,7 +306,7 @@ import LandingPage from "../components/LandingPage.tsx";
 
       .landing-overlay.transitioning .landing-overlay-ui,
       .landing-overlay.transitioning .landing-glow,
-      .landing-overlay.transitioning .landing-info-section,
+      .landing-overlay.transitioning .landing-rooms-inner,
       .landing-overlay.transitioning .landing-scroll-indicator {
         opacity: 0;
         transition: opacity 0.35s ease;
@@ -368,7 +384,28 @@ import LandingPage from "../components/LandingPage.tsx";
         .landing-attrib { font-size: 0.68rem; }
       }
 
-      /* ================= INFO SECTION & CARDS ================= */
+      /* ================= ÍNDICE DE SALAS ================= */
+      /* La mitad de abajo está hecha del **mismo material** que la portada:
+         masas planas, celda cuadrada, dígitos de buscaminas, tipografía de la
+         casa y **cero radio de borde**. Antes empezaba aquí, de golpe, una
+         página web normal —tarjetas redondeadas, bordes translúcidos, un
+         `translateY` al pasar por encima— y el corte decía «hasta aquí llegó
+         el diseño». Tres decisiones lo cosen:
+
+         - la **costura**: la última fila de la silueta sigue bajando y se
+           erosiona hasta el fondo del índice, así que no hay línea de
+           frontera, hay degradado de píxeles;
+         - las placas **se tocan**: la rejilla lleva `gap: 1px` sobre un fondo
+           tenue, así que la separación *es* una línea de la rejilla y las tres
+           salas forman un solo bloque, como las celdas de arriba;
+         - al pasar por encima, una sala abierta no se ilumina: **se
+           invierte**. Es el gesto que la portada ya tenía a mano —una celda
+           que cambia de bit— y el único que dice de qué está hecha la página. */
+
+      /* Es un **botón**, no un adorno. Estaba dibujando una flecha que invita a
+         bajar y con `pointer-events: none`: quien la pulsaba no obtenía nada,
+         que es peor que no dibujarla. Ahora baja al índice con el
+         `scroll-behavior: smooth` que el contenedor ya tenía. */
       .landing-scroll-indicator {
         position: absolute;
         left: 50%;
@@ -378,189 +415,400 @@ import LandingPage from "../components/LandingPage.tsx";
         flex-direction: column;
         align-items: center;
         gap: 0.35rem;
-        font-family: "Space Mono", "IBM Plex Mono", monospace;
+        margin: 0;
+        padding: 0.5rem 0.9rem;
+        border: 0;
+        background: none;
+        font-family: var(--mono);
         font-size: 0.65rem;
         letter-spacing: 0.15em;
         text-transform: uppercase;
         color: rgba(255, 255, 255, 0.3);
         animation: landing-bounce 2s infinite;
-        pointer-events: none;
+        cursor: pointer;
         z-index: 10006;
+        transition: color 0.15s linear;
       }
-      .landing-scroll-indicator svg {
-        stroke-width: 1.5;
-      }
+      .landing-scroll-indicator:hover { color: rgba(255, 255, 255, 0.7); }
+      .landing-scroll-indicator svg { stroke-width: 1.5; }
+
       @keyframes landing-bounce {
         0%, 20%, 50%, 80%, 100% { transform: translate(-50%, 0); }
         40% { transform: translate(-50%, -6px); }
         60% { transform: translate(-50%, -3px); }
       }
 
-      .landing-info-section {
+      .landing-rooms {
         position: relative;
         z-index: 10006;
+        width: 100%;
         min-height: 100vh;
-        width: 100%;
-        background-color: #0c0d0f;
-        border-top: 1px solid rgba(255, 255, 255, 0.08);
-        padding: 8rem 4rem 6rem;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        box-sizing: border-box;
         margin-top: 100vh;
+        background-color: var(--dark);
+        color: var(--light);
+        overflow: hidden;
       }
-      .landing-info-content {
-        max-width: 1100px;
-        margin: 0 auto;
-        width: 100%;
-      }
-      .landing-info-title {
-        font-family: "Space Grotesk", "Helvetica Neue", Arial, sans-serif;
-        font-weight: 700;
-        font-size: clamp(2.2rem, 5vw, 3.8rem);
-        line-height: 0.95;
-        letter-spacing: -0.04em;
-        color: #fff;
-        margin: 0 0 1.5rem 0;
-      }
-      .landing-info-subtitle {
-        font-family: "IBM Plex Sans", sans-serif;
-        font-weight: 400;
-        font-size: clamp(1.05rem, 2vw, 1.3rem);
-        line-height: 1.5;
-        color: rgba(232, 232, 236, 0.65);
-        max-width: 720px;
-        margin: 0 0 4rem 0;
-      }
-      .landing-cards-container {
+
+      /* `width: 100%` y no `100vw`: la rejilla de arriba también mide el ancho
+         del contenido, así que las 48 columnas de abajo caen exactamente en
+         las mismas verticales. Con `100vw` se desalineaban lo que mide la
+         barra de desplazamiento —hasta 15 px en la última columna— y el borde
+         erosionado se veía pisado medio píxel. */
+      .landing-seam-grid {
         display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 2.5rem;
         width: 100%;
+        /* Misma altura de celda que la portada (`--ch`), o la erosión saldría
+           con píxeles de otro tamaño y se leería como una textura distinta. */
+        height: calc(var(--ch) * 7);
+        grid-auto-rows: 1fr;
+        pointer-events: none;
+        user-select: none;
       }
-      .landing-card {
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-        background: rgba(255, 255, 255, 0.02);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 12px;
-        padding: 3rem;
-        text-decoration: none;
-        color: inherit;
-        cursor: pointer;
-        min-height: 340px;
-        transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
-                    border-color 0.25s cubic-bezier(0.16, 1, 0.3, 1),
-                    background-color 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-        box-sizing: border-box;
+
+      .landing-seam-flat { display: none; }
+
+      /* ---- La erosión sigue mientras te vas ---- */
+      /* En reposo la costura es el borde deshilachado del cuadro. Al bajar,
+         **sigue deshilachándose**: cada celda lleva su `--t`, el punto del
+         recorrido en el que le toca apagarse, y `--p` —la posición de scroll
+         en alturas de ventana— va cruzando el campo de umbrales de arriba
+         abajo. El frente se queda rondando el tercio inferior de la pantalla,
+         así que lo que se ve es el pie del cuadro comiéndose a sí mismo
+         mientras el índice sube por debajo.
+
+         El factor 22 del `calc` es la pendiente: convierte el umbral en un
+         corte casi seco (~4,5% de recorrido de penumbra). Un desvanecido
+         largo aquí es lo que haría que esto pareciese una máscara de
+         degradado y no una rejilla de celdas.
+
+         `transition` a cero en la opacidad **es obligatorio**: `.gcell` lleva
+         0,6 s heredados de la animación de salida, y con ellos cada celda
+         llegaba medio segundo tarde — la erosión se arrastraba detrás del
+         scroll como una estela sucia. El `transform` conserva su transición
+         porque es el que usa la salida al atlas. */
+      .landing-seam .gcell-l {
+        opacity: clamp(0, calc((var(--t, 9) - var(--p, 0)) * 22), 1);
+        transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1), opacity 0s;
       }
-      .landing-card:hover {
-        transform: translateY(-4px);
-        border-color: rgba(255, 255, 255, 0.25);
-        background: rgba(255, 255, 255, 0.05);
+
+      .landing-rooms-inner {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: clamp(3.5rem, 9vh, 6.5rem) 4rem clamp(3rem, 7vh, 5rem);
       }
-      .landing-card-header {
-        display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
-        margin-bottom: 1.5rem;
-      }
-      .landing-card-number {
-        font-family: "Space Mono", "IBM Plex Mono", monospace;
-        font-size: 0.7rem;
-        letter-spacing: 0.15em;
-        color: rgba(255, 255, 255, 0.4);
-      }
-      .landing-card-title {
-        font-family: "Space Grotesk", sans-serif;
-        font-size: 1.8rem;
-        font-weight: 700;
-        letter-spacing: -0.02em;
-        line-height: 1.1;
-        color: #fff;
-        margin: 0;
-      }
-      .landing-card-desc {
-        font-family: "IBM Plex Sans", sans-serif;
-        font-size: 0.95rem;
-        line-height: 1.55;
-        color: rgba(232, 232, 236, 0.65);
-        margin: 0 0 2.5rem 0;
-        flex-grow: 1;
-      }
-      .landing-card-action {
+
+      /* ---- Encabezado del índice ---- */
+      /* La regla que separa «index» de la cuenta de salas es la misma hairline
+         que separa las placas: una sola línea recorre la página y va marcando
+         los cortes, en vez de tres estilos de borde distintos. */
+      .landing-rooms-tag {
         display: flex;
         align-items: center;
-        gap: 0.75rem;
-        font-family: "Space Mono", "IBM Plex Mono", monospace;
-        font-size: 0.8rem;
-        font-weight: 500;
-        letter-spacing: 0.05em;
-        color: #fff;
+        gap: 1.1rem;
+        margin: 0 0 clamp(1.4rem, 3vh, 2.2rem);
+        font-family: var(--mono);
+        font-size: 0.68rem;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: rgba(230, 230, 230, 0.45);
+      }
+
+      .landing-rooms-rule {
+        flex: 1;
+        height: 1px;
+        background: rgba(230, 230, 230, 0.18);
+      }
+
+      /* Minúscula y punto final, como «words have gravity.»: es el mismo
+         titular, una octava más abajo. El tracking negativo es el mismo
+         (-0,045em) porque es el que cierra los huecos de Space Grotesk. */
+      .landing-rooms-title {
+        margin: 0 0 clamp(1.2rem, 2.5vh, 1.8rem);
+        font-size: clamp(2.3rem, 5vw, 4rem);
+        font-weight: 700;
+        line-height: 0.9;
+        letter-spacing: -0.045em;
+        color: var(--light);
+      }
+
+      .landing-rooms-lead {
+        margin: 0;
+        max-width: 58ch;
+        font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+        font-size: clamp(1rem, 1.5vw, 1.14rem);
+        line-height: 1.62;
+        color: rgba(230, 230, 230, 0.6);
+      }
+
+      /* ---- Las tres placas ---- */
+      .landing-room-list {
+        list-style: none;
+        margin: clamp(3rem, 7vh, 4.75rem) 0 0;
+        padding: 0;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        /* El hueco *es* la línea: el fondo del contenedor se ve por él. Así no
+           hay dos bordes contiguos ni medio píxel de doble grosor. */
+        gap: 1px;
+        background: rgba(230, 230, 230, 0.18);
+        border: 1px solid rgba(230, 230, 230, 0.18);
+      }
+
+      .landing-room-list > li { display: flex; }
+
+      /* ---- La llegada ---- */
+      /* Bajar tenía dos partes rotas: el cuadro no se iba (arriba) y el índice
+         no llegaba — aparecía ya montado, como si hubiera estado ahí todo el
+         rato. Ahora se dibuja en dos tiempos: primero los filetes de la
+         rejilla, y encima cae el contenido de cada placa con 0,1 s de retraso
+         entre ellas.
+
+         Se anima el **contenido**, nunca la placa: con `opacity` sobre el
+         `<li>` se veía por debajo el fondo del contenedor, que es el color de
+         los filetes, y las tres salas entraban como un rectángulo gris claro.
+
+         Y el movimiento va en `steps(6)`: aquí nada se desliza. Las cosas
+         caen en la celda que les toca, a saltos, como todo lo demás de esta
+         página. */
+      .landing-rooms-inner .landing-room-list {
+        background-color: transparent;
+        border-color: transparent;
+        transition: background-color 0.3s linear, border-color 0.3s linear;
+      }
+
+      .landing-rooms-inner .landing-room > *,
+      .landing-rooms-head > * {
+        opacity: 0;
+        transform: translateY(16px);
+        transition: opacity 0.3s linear, transform 0.42s steps(6);
+      }
+
+      .landing-rooms-inner.is-in .landing-room-list {
+        background-color: rgba(230, 230, 230, 0.18);
+        border-color: rgba(230, 230, 230, 0.18);
+        transition-delay: 0.12s;
+      }
+
+      .landing-rooms-inner.is-in .landing-room > *,
+      .landing-rooms-inner.is-in .landing-rooms-head > * {
+        opacity: 1;
+        transform: none;
+      }
+
+      .landing-rooms-inner.is-in .landing-rooms-title { transition-delay: 0.05s; }
+      .landing-rooms-inner.is-in .landing-rooms-lead { transition-delay: 0.1s; }
+      .landing-rooms-inner.is-in > ol > li:nth-child(1) .landing-room > * { transition-delay: 0.2s; }
+      .landing-rooms-inner.is-in > ol > li:nth-child(2) .landing-room > * { transition-delay: 0.3s; }
+      .landing-rooms-inner.is-in > ol > li:nth-child(3) .landing-room > * { transition-delay: 0.4s; }
+
+      .landing-room {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        min-height: 27rem;
+        padding: clamp(1.6rem, 2.3vw, 2.15rem);
+        background-color: var(--dark);
+        color: var(--light);
+        text-decoration: none;
+        /* 0,12 s y lineal: la inversión tiene que leerse como un bit que
+           cambia, no como un fundido. Con la curva suave de las tarjetas de
+           antes el efecto parecía un `hover` de bootstrap. */
+        transition: background-color 0.12s linear, color 0.12s linear;
+      }
+
+      a.landing-room:hover,
+      a.landing-room:focus-visible {
+        background-color: var(--light);
+        color: var(--ink);
+      }
+
+      /* El foco se dibuja **después** de la inversión y en tinta oscura: con
+         el contorno claro del navegador sobre la placa ya invertida no se veía
+         nada. */
+      a.landing-room:focus-visible {
+        outline: 2px solid var(--ink);
+        outline-offset: -7px;
+      }
+
+      .landing-room-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+      }
+
+      .landing-room-id {
+        font-family: var(--mono);
+        font-weight: 700;
+        font-size: 1.3rem;
+        line-height: 1;
+        letter-spacing: 0.03em;
+      }
+
+      .landing-room-status {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-family: var(--mono);
+        font-size: 0.63rem;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        opacity: 0.55;
+      }
+
+      /* Cuadrado y no círculo: aquí no hay una sola esquina redondeada. Lleno
+         = la sala existe; hueco = todavía no. */
+      .landing-room-status i {
+        width: 7px;
+        height: 7px;
+        flex: none;
+        box-shadow: inset 0 0 0 1px currentColor;
+      }
+      .landing-room-status i.dot-on { background: currentColor; }
+
+      /* El emblema hereda `currentColor`, así que se invierte con la placa sin
+         una sola regla más. */
+      .landing-glyph {
+        --gc: 9px;
+        display: grid;
+        grid-template-columns: repeat(10, var(--gc));
+        grid-auto-rows: var(--gc);
+        margin: clamp(1.9rem, 4vh, 2.9rem) 0 clamp(1.5rem, 3vh, 2.1rem);
+      }
+      .landing-glyph .gp { display: block; }
+      .landing-glyph .gp-on { background: currentColor; }
+
+      .landing-room-title {
+        margin: 0 0 0.85rem;
+        font-size: clamp(1.35rem, 2.1vw, 1.68rem);
+        font-weight: 700;
+        line-height: 1.02;
+        letter-spacing: -0.03em;
+      }
+
+      /* `opacity` y no un color fijo: el texto secundario tiene que seguir
+         siendo secundario en las dos tintas de la placa. */
+      .landing-room-desc {
+        flex: 1;
+        margin: 0 0 2rem;
+        max-width: 46ch;
+        font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+        font-size: 0.92rem;
+        line-height: 1.62;
+        opacity: 0.62;
+      }
+
+      .landing-room-action {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.8rem;
+        padding-top: 1rem;
+        border-top: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+        font-family: var(--mono);
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.14em;
         text-transform: uppercase;
       }
-      .landing-card-action svg {
-        transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+
+      /* `steps(2)`: el salto de la flecha va a saltos, como todo lo demás. */
+      .landing-room-action svg {
+        flex: none;
+        transition: transform 0.12s steps(2);
       }
-      .landing-card:hover .landing-card-action svg {
-        transform: translateX(4px);
+      a.landing-room:hover .landing-room-action svg { transform: translateX(5px); }
+
+      /* La sala que no existe se apaga **con la tinta**, no con `opacity` en la
+         placa: media transparencia dejaría ver el fondo del contenedor y la
+         placa saldría más clara que sus dos vecinas, que es lo contrario de lo
+         que hay que decir. */
+      .landing-room-shut {
+        color: rgba(230, 230, 230, 0.38);
+        cursor: default;
+      }
+      .landing-room-shut .landing-room-desc { opacity: 0.82; }
+
+      /* ---- Pie ---- */
+      .landing-rooms-foot {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 1rem 2rem;
+        margin-top: clamp(2.5rem, 5vh, 3.5rem);
+        padding-top: 1.4rem;
+        border-top: 1px solid rgba(230, 230, 230, 0.18);
+        font-family: var(--mono);
+        font-size: 0.66rem;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: rgba(230, 230, 230, 0.4);
+      }
+
+      .landing-rooms-links {
+        display: flex;
+        gap: 1.8rem;
+      }
+
+      .landing-rooms-links a {
+        color: rgba(230, 230, 230, 0.68);
+        text-decoration: none;
+        transition: color 0.12s linear;
+      }
+      .landing-rooms-links a:hover { color: var(--light); }
+
+      /* ---- Pantallas estrechas ---- */
+      @media (max-width: 1080px) {
+        .landing-rooms-inner { padding-left: 2.5rem; padding-right: 2.5rem; }
+        .landing-room-list { grid-template-columns: 1fr; }
+        .landing-room { min-height: 0; }
+        .landing-room-desc { max-width: 62ch; }
       }
 
       @media (max-width: 820px) {
-        .landing-scroll-indicator {
-          display: none;
-        }
-        .landing-info-section {
+        .landing-scroll-indicator { display: none; }
+        /* Sin la rejilla de la portada el borde de arriba es claro y plano, así
+           que la erosión tiene que arrancar de una fila entera encendida. */
+        .landing-seam { display: none; }
+        .landing-seam-flat { display: grid; }
+        .landing-rooms {
           margin-top: 0;
-          padding: 4rem 1.75rem;
-          min-height: auto;
-          background-color: var(--light);
-          border-top: 1px solid rgba(0, 0, 0, 0.08);
+          min-height: 0;
         }
-        .landing-info-title {
-          color: var(--ink);
-        }
-        .landing-info-subtitle {
-          color: rgba(32, 32, 32, 0.7);
-          margin-bottom: 2.5rem;
-        }
-        .landing-cards-container {
-          grid-template-columns: 1fr;
-          gap: 1.5rem;
-        }
-        .landing-card {
-          padding: 2rem;
-          min-height: auto;
-          background: rgba(0, 0, 0, 0.02);
-          border: 1px solid rgba(0, 0, 0, 0.08);
-        }
-        .landing-card:hover {
-          transform: none;
-          background: rgba(0, 0, 0, 0.04);
-          border-color: rgba(0, 0, 0, 0.15);
-        }
-        .landing-card-number {
-          color: rgba(0, 0, 0, 0.4);
-        }
-        .landing-card-title {
-          color: var(--ink);
-        }
-        .landing-card-desc {
-          color: rgba(32, 32, 32, 0.65);
-        }
-        .landing-card-action {
-          color: var(--ink);
-        }
+        .landing-rooms-inner { padding: 3.5rem 1.75rem 3rem; }
+        .landing-rooms-title { font-size: 2.6rem; }
+        .landing-room { padding: 1.75rem; }
+        /* Sin puntero fino no hay `hover`: la inversión se pierde, así que la
+           placa abierta se distingue por la tinta plena del pie de acción. */
+        .landing-rooms-foot { font-size: 0.62rem; }
       }
 
       @media (max-width: 560px) {
-        .landing-card {
-          padding: 1.75rem;
+        .landing-glyph { --gc: 8px; }
+        .landing-rooms-title { font-size: 2.15rem; }
+        .landing-rooms-tag { gap: 0.8rem; font-size: 0.62rem; }
+      }
+
+      /* ---- Sin movimiento ---- */
+      /* La erosión al bajar y la entrada del índice son las dos cosas que hay
+         que apagar aquí; el resto de la página no se mueve sola. Y hay que
+         apagarlas dejando el **estado final**, no el inicial: sin esto, quien
+         pide menos movimiento se queda con las tres placas vacías para
+         siempre, que es un fallo, no una preferencia. */
+      @media (prefers-reduced-motion: reduce) {
+        .landing-overlay { scroll-behavior: auto; }
+        .landing-scroll-indicator { animation: none; }
+        .landing-seam .gcell-l { opacity: 1; }
+        .landing-rooms-inner .landing-room-list {
+          background-color: rgba(230, 230, 230, 0.18);
+          border-color: rgba(230, 230, 230, 0.18);
         }
-        .landing-card-title {
-          font-size: 1.5rem;
+        .landing-rooms-inner .landing-room > *,
+        .landing-rooms-head > * {
+          opacity: 1;
+          transform: none;
+          transition: none;
         }
       }
     </style>

@@ -327,6 +327,7 @@ const UI = {
     next: "siguiente",
     done: "entrar en la galaxia",
     close: "cerrar",
+    more: "o léelo entero en la guía",
     step: (i: number, n: number) => `paso ${i} de ${n}`,
     go: (i: number) => `ir al paso ${i}`,
   },
@@ -337,12 +338,22 @@ const UI = {
     next: "next",
     done: "enter the galaxy",
     close: "close",
+    more: "or read the whole thing in the guide",
     step: (i: number, n: number) => `step ${i} of ${n}`,
     go: (i: number) => `go to step ${i}`,
   },
 };
 
-export default function Welcome({ lang, onClose }: { lang: string; onClose: () => void }) {
+export default function Welcome({
+  lang, onClose, onGuide,
+}: {
+  lang: string;
+  onClose: () => void;
+  /** Pasar a la guía larga. La presentación tiene que quedarse en treinta
+   *  segundos —es lo que la hace pasable— y a la vez no puede ser todo lo que
+   *  el atlas sabe explicar de sí mismo. Esto es la costura entre las dos. */
+  onGuide?: () => void;
+}) {
   const [i, setI] = useState(0);
   const boxRef = useRef<HTMLDivElement>(null);
   /** A quién se le devuelve el foco al cerrar. Sin esto, cerrar la presentación
@@ -442,6 +453,20 @@ export default function Welcome({ lang, onClose }: { lang: string; onClose: () =
         )}
 
         <p className="wl-note">{s.note}</p>
+
+        {/* La puerta a la guía, sólo en la última pantalla. Antes de que
+            alguien sepa qué hay dentro, ofrecerle diez capítulos es un muro;
+            en la pantalla que dice «y ahora, a moverse» es la respuesta a la
+            pregunta que acaba de quedar abierta. Va sobre el pie y no en él:
+            el pie es «siguiente», y competir con el botón que avanza es la
+            forma de que no se pulse ninguno de los dos. */}
+        {last && onGuide && (
+          <p className="wl-more">
+            <button className="link" onClick={() => { remember(); onGuide(); }}>
+              {t.more}
+            </button>
+          </p>
+        )}
 
         <footer className="wl-foot">
           {/* Los puntos son también botones: en una presentación de cuatro

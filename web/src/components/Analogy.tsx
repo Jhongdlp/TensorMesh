@@ -4,6 +4,7 @@ import type { Vectors } from "../galaxy/vectors";
 import { resolve, type Index } from "../galaxy/search.mjs";
 import { query } from "../galaxy/analogy.mjs";
 import WordSearch from "./WordSearch";
+import Foot, { type WhyLink } from "./Foot";
 
 /** Analogías: `rey − hombre + mujer`.
  *
@@ -50,7 +51,7 @@ export interface AnalogyCopy {
 }
 
 export default function Analogy({
-  g, index, vec, zoneCss, t, open, onOpen, onWord,
+  g, index, vec, zoneCss, t, why, open, onOpen, onWord,
 }: {
   g: Galaxy;
   index: Index;
@@ -60,6 +61,8 @@ export default function Analogy({
   open: boolean;
   onOpen: (v: boolean) => void;
   onWord: (id: number) => void;
+  /** El «por qué» del pie: abre el capítulo de la aritmética. */
+  why?: WhyLink;
 }) {
   const [ids, setIds] = useState<(number | null)[]>([null, null, null]);
   /** `null` en reposo, `0..1` descargando, `1` mientras se mide. */
@@ -171,7 +174,7 @@ export default function Analogy({
                   </li>
                 ))}
               </ol>
-              <p className="foot">{t.foot}</p>
+              <Foot why={why}>{t.foot}</Foot>
             </>
           ) : <p className="stat">{t.none}</p>)}
         </div>

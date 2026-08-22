@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Galaxy } from "../galaxy/loader";
 import { regions, core } from "../galaxy/regions.mjs";
+import Foot, { type WhyLink } from "./Foot";
 
 /** El tipo sale de la función y no de un `import type`: `regions.mjs` es JS con
  *  JSDoc, y así no hay una segunda descripción de la misma forma. */
@@ -38,7 +39,7 @@ export interface LegendCopy {
 }
 
 export default function Legend({
-  g, zoneCss, t, open, onOpen, onPick, onPreview,
+  g, zoneCss, t, why, open, onOpen, onPick, onPreview,
 }: {
   g: Galaxy;
   zoneCss: (c: number) => string;
@@ -49,6 +50,8 @@ export default function Legend({
   onPick: (members: number[], frame: number[]) => void;
   /** Resalte de paso, sin cámara. `null` restaura lo que hubiera. */
   onPreview: (members: number[] | null) => void;
+  /** El «por qué» del pie: abre el capítulo del color. */
+  why?: WhyLink;
 }) {
   const zs = useMemo(() => regions(g), [g]);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -100,7 +103,7 @@ export default function Legend({
               </li>
             ))}
           </ul>
-          <p className="foot">{t.foot}</p>
+          <Foot why={why}>{t.foot}</Foot>
         </div>
       )}
     </>

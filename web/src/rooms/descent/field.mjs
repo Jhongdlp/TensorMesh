@@ -15,9 +15,42 @@
  */
 import { rampCss } from "../../galaxy/palette.mjs";
 
-/** Caminantes por defecto. El lazo de presupuesto sube y baja desde aquí. */
-export const N_DEFAULT = 40_000;
+/** Caminantes por defecto.
+ *
+ *  Eran 40.000 y era el error de diseño de la sala: a ese número, con dos
+ *  píxeles de radio y mezcla aditiva, lo que se ve no son caminantes sino
+ *  niebla. La pregunta que la sala contesta —«¿cómo baja *uno*?»— no se puede
+ *  leer en una nube. Ocho mil se siguen viendo como multitud y cada bolita
+ *  sigue siendo una bolita, que es lo que hay que ver antes de creerse nada.
+ *  El mando llega hasta `N_MAX` para quien quiera la niebla. */
+export const N_DEFAULT = 8_000;
 export const N_MAX = 120_000;
+/** Número al que está calibrada la exposición. **No** es `N_DEFAULT`: la luz
+ *  acumulada es `vivos · brillo`, así que el brillo se compensa contra una
+ *  referencia fija. Si fuese `N_DEFAULT`, cambiar el reparto por defecto
+ *  recalibraría en silencio la imagen de todas las superficies. */
+export const N_REF = 40_000;
+
+/** Caminantes **seguidos**: los que dejan su camino dibujado, punto a punto.
+ *
+ *  Son la respuesta a la pregunta que la sala no contestaba. Ocho mil canicas
+ *  idénticas dicen «esto es un enjambre» y no dicen nada más: nadie puede
+ *  seguir a una con la vista, así que la mecánica —*mira la pendiente bajo tus
+ *  pies, da un paso cuesta abajo, repite*— no se ve por ninguna parte. Cinco
+ *  que van marcadas y arrastran sus últimas posiciones **sí** la enseñan, y de
+ *  paso hacen visible lo que el enjambre entero ya estaba diciendo en voz baja.
+ *
+ *  Cinco y no una: con una sola, lo que se aprende es un camino; con cinco se
+ *  ve que la superficie los trata distinto según de dónde salgan, que es la
+ *  mitad del contenido de Himmelblau y de Rastrigin. Y no veinte: a partir de
+ *  ahí vuelven a ser un enjambre pequeño.
+ *
+ *  Ocupan los **primeros** índices del estado, así que seguirlos es un rango
+ *  contiguo y no una lista de índices sueltos. */
+export const TRACED = 5;
+/** Cuántas posiciones guarda el rastro de cada uno, en frames. A ocho pasos
+ *  por frame son ~3.000 pasos: casi la corrida entera. */
+export const PATH_LEN = 384;
 
 /** @typedef {"sgd" | "momentum" | "adam"} OptKey */
 
@@ -37,14 +70,27 @@ export const OPT_NAMES = { sgd: "Descenso", momentum: "Momento", adam: "Adam" };
  * @property {(x: number, y: number) => number} f
  * @property {(x: number, y: number) => number[]} g
  * @property {Record<OptKey, { lr: number, clip: number }>} opt
+ * @property {number[][]} min   mínimos conocidos, en coordenadas del problema.
+ *                              Se dibujan como diana sobre el relieve: sin
+ *                              blanco a la vista, «descender» no tiene a dónde,
+ *                              y en Himmelblau son cuatro y ése es el chiste.
+ *                              La silla no tiene: por eso su lista va vacía.
  * @property {string} reach     cuántos llegan al fondo, del barrido
  */
 
 const TAU = Math.PI * 2;
 /** Altura total del relieve en unidades de mundo, y lado del dominio. Fijos
  *  para las cinco: así la cámara encuadra igual y comparar superficies no
- *  implica reaprender la escala. */
-const H_SPAN = 4.3;
+ *  implica reaprender la escala.
+ *
+ *  `H_SPAN` era 4,3 —tanto como el lado— y ésa era la mitad de por qué la sala
+ *  se veía rara. Con la vertical tan alta como el ancho, el relieve deja de
+ *  parecer un paisaje y parece **una tela doblada**: las paredes de pérdida
+ *  alta se levantan por encima de la cámara, tapan el valle y se acaba mirando
+ *  la cara de abajo de la malla. A 0,55× del lado se lee lo que es —un terreno
+ *  con un valle— sin perder ni un escalón de la rampa, porque el color y las
+ *  curvas de nivel siguen recorriendo el rango entero. */
+const H_SPAN = 2.2;
 const XY_SPAN = 4.0;
 
 /** Las cinco. `f` y `g` son espejo de `fEval`/`fGrad` en `field.wgsl`.
@@ -65,6 +111,7 @@ export const SURFACES = [
     f: (x, y) => (1 - x) ** 2 + 100 * (y - x * x) ** 2,
     g: (x, y) => [-2 * (1 - x) - 400 * x * (y - x * x), 200 * (y - x * x)],
     opt: { sgd: { lr: 0.002, clip: 20 }, momentum: { lr: 0.002, clip: 20 }, adam: { lr: 0.05, clip: 1e9 } },
+    min: [[1, 1]],
     reach: "98%",
   },
   {
@@ -77,6 +124,7 @@ export const SURFACES = [
     g: (x, y) => [4 * x * (x * x + y - 11) + 2 * (x + y * y - 7),
                   2 * (x * x + y - 11) + 4 * y * (x + y * y - 7)],
     opt: { sgd: { lr: 0.01, clip: 20 }, momentum: { lr: 0.002, clip: 20 }, adam: { lr: 0.05, clip: 1e9 } },
+    min: [[3, 2], [-2.805118, 3.131312], [-3.779310, -3.283186], [3.584428, -1.848126]],
     reach: "100%",
   },
   {
@@ -92,6 +140,7 @@ export const SURFACES = [
               2 * a * x + 4 * b * x * y + 6 * c * x * y * y];
     },
     opt: { sgd: { lr: 0.005, clip: 20 }, momentum: { lr: 0.002, clip: 20 }, adam: { lr: 0.05, clip: 1e9 } },
+    min: [[3, 0.5]],
     reach: "60%",
   },
   {
@@ -103,6 +152,7 @@ export const SURFACES = [
     f: (x, y) => x * x - y * y,
     g: (x, y) => [2 * x, -2 * y],
     opt: { sgd: { lr: 0.02, clip: 20 }, momentum: { lr: 0.002, clip: 20 }, adam: { lr: 0.05, clip: 1e9 } },
+    min: [],
     reach: "escapan todos",
   },
   {
@@ -114,6 +164,7 @@ export const SURFACES = [
     f: (x, y) => 20 + x * x - 10 * Math.cos(TAU * x) + y * y - 10 * Math.cos(TAU * y),
     g: (x, y) => [2 * x + 10 * TAU * Math.sin(TAU * x), 2 * y + 10 * TAU * Math.sin(TAU * y)],
     opt: { sgd: { lr: 0.005, clip: 20 }, momentum: { lr: 0.002, clip: 20 }, adam: { lr: 0.02, clip: 1e9 } },
+    min: [[0, 0]],
     reach: "9%",
   },
 ];
@@ -194,8 +245,19 @@ export function seedWalkers(surf, n, s, walkerSize) {
 
   const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
   for (let i = 0; i < n; i++) {
-    const x = x0 + rnd() * (x1 - x0);
-    const y = y0 + rnd() * (y1 - y0);
+    // Los cinco seguidos **no** van al azar: se reparten por un anillo del
+    // dominio, a ángulos regulares y con la semilla desplazándolos un poco.
+    // Al azar, dos de los cinco caen en el mismo barrio la mitad de las veces
+    // —y entonces dibujan el mismo camino dos veces— o los cinco caen en la
+    // misma cuenca de Himmelblau, que es justo lo que no hay que enseñar.
+    const traced = i < TRACED;
+    const ang0 = ((i + 0.5) / TRACED + rnd() * 0.12) * TAU;
+    const x = traced
+      ? cx + Math.cos(ang0) * (x1 - x0) * 0.34
+      : x0 + rnd() * (x1 - x0);
+    const y = traced
+      ? cy + Math.sin(ang0) * (y1 - y0) * 0.34
+      : y0 + rnd() * (y1 - y0);
     st[i * 2] = x;
     st[i * 2 + 1] = y;
     // Tono por el ángulo del **origen** respecto al centro del dominio. En
@@ -205,7 +267,9 @@ export function seedWalkers(surf, n, s, walkerSize) {
     tint[i * 4] = ramp[k * 3];
     tint[i * 4 + 1] = ramp[k * 3 + 1];
     tint[i * 4 + 2] = ramp[k * 3 + 2];
-    tint[i * 4 + 3] = walkerSize;
+    // El radio viaja **por caminante** en `w`, y ahí es donde los cinco
+    // seguidos se hacen grandes: el shader no tiene que saber quién es quién.
+    tint[i * 4 + 3] = walkerSize * (i < TRACED ? 2.1 : 1);
   }
   return { st, tint };
 }

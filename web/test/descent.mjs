@@ -31,7 +31,9 @@ import { png } from "./png.mjs";
 import { perspective, lookAt, mul } from "./mat.mjs";
 // Superficies, siembra y escalas se importan del propio src: `field.mjs` existe
 // justo para que estas imágenes sean las de la sala y no una recreación.
-import { SURFACES, OPTS, HYPER, metricsOf, seedWalkers } from "../src/rooms/descent/field.mjs";
+import {
+  SURFACES, OPTS, HYPER, TRACED, PATH_LEN, metricsOf, seedWalkers,
+} from "../src/rooms/descent/field.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = join(HERE, "..", "src", "rooms", "descent");
@@ -137,6 +139,41 @@ const fadePipe = device.createRenderPipeline({
   primitive: { topology: "triangle-list" },
   depthStencil: { format: DEPTH, depthWriteEnabled: false, depthCompare: "always" },
 });
+const recordPipe = device.createComputePipeline({
+  layout: "auto", compute: { module: stepMod, entryPoint: "record" },
+});
+const tracePipe = device.createRenderPipeline({
+  layout: "auto",
+  vertex: { module: walkMod, entryPoint: "vsTrace" },
+  fragment: {
+    module: walkMod, entryPoint: "fsTrace",
+    targets: [{
+      format: OUT_FMT,
+      blend: {
+        color: { srcFactor: "src-alpha", dstFactor: "one-minus-src-alpha", operation: "add" },
+        alpha: { srcFactor: "one", dstFactor: "one-minus-src-alpha", operation: "add" },
+      },
+    }],
+  },
+  primitive: { topology: "triangle-list" },
+  depthStencil: { format: DEPTH, depthWriteEnabled: false, depthCompare: "less" },
+});
+const headPipe = device.createRenderPipeline({
+  layout: "auto",
+  vertex: { module: walkMod, entryPoint: "vsHead" },
+  fragment: {
+    module: walkMod, entryPoint: "fsHead",
+    targets: [{
+      format: OUT_FMT,
+      blend: {
+        color: { srcFactor: "src-alpha", dstFactor: "one-minus-src-alpha", operation: "add" },
+        alpha: { srcFactor: "one", dstFactor: "one-minus-src-alpha", operation: "add" },
+      },
+    }],
+  },
+  primitive: { topology: "triangle-list" },
+  depthStencil: { format: DEPTH, depthWriteEnabled: false, depthCompare: "less" },
+});
 const compPipe = device.createRenderPipeline({
   layout: "auto",
   vertex: { module: trailMod, entryPoint: "vsFull" },
@@ -151,9 +188,10 @@ const compPipe = device.createRenderPipeline({
     }],
   },
   primitive: { topology: "triangle-list" },
+  depthStencil: { format: DEPTH, depthWriteEnabled: false, depthCompare: "always" },
 });
 ok(true, "los cuatro shaders compilan");
-ok(true, "los cinco pipelines se construyen", "uniformes de 64/48/96/112 B y profundidad");
+ok(true, "los ocho pipelines se construyen", "uniformes de 64/48/160/144/16 B y profundidad");
 
 // -------------------------------------------------------------------- útiles
 const S = GPUBufferUsage.STORAGE;
@@ -195,7 +233,8 @@ const g1 = (p) => device.createBindGroup({
   layout: p.getBindGroupLayout(1),
   entries: [{ binding: 0, resource: { buffer: surfU } }],
 });
-const stepG1 = g1(stepPipe), surfG1 = g1(surfPipe), walkG1 = g1(walkPipe);
+const stepG1 = g1(stepPipe), surfG1 = g1(surfPipe), walkG1 = g1(walkPipe),
+      headG1 = g1(headPipe), traceG1 = g1(tracePipe);
 
 /** Corre `steps` pasos en la GPU y devuelve el estado final. Los pasos van en
  *  una sola pasada, exactamente como en `engine.ts`. */
@@ -383,18 +422,25 @@ console.log(`\n  ${(perStepTotal / perStepN).toFixed(4)} ms/paso de media a ${N}
 console.log(`\n— imágenes ${"—".repeat(45)}`);
 {
   const W = 640, H = 480;                       // W*4 múltiplo de 256
-  const WALKERS = 30000;
+  // Sobrescribibles por entorno: la corrida por defecto llega a converger, y
+  // ahí las bolitas están todas metidas en la aguja del mínimo. Para mirar
+  // *cómo baja* hay que poder parar antes —`DESC_FRAMES=8`— y con menos gente.
+  const WALKERS = Number(process.env.DESC_N || 30000);
   // **Exposición larga**: `KEEP = 1` no borra nunca, así que la imagen es el
   // registro de la corrida entera y no de los últimos veintiocho frames. Es lo
   // que hace que comparar optimizadores signifique algo — con la estela rodante
   // los tres salen idénticos, porque a mil quinientos pasos los tres están
   // quietos en el mismo sitio.
-  const FRAMES = 220, PER_FRAME = 8, KEEP = 1;
+  const FRAMES = Number(process.env.DESC_FRAMES || 220), PER_FRAME = 8, KEEP = 1;
   const EXPOSE = 0.55, N_REF = 40000, KEEP_REF = 0.965;
+  // El color por altura y el tamaño de la bolita, espejo de `engine.ts`.
+  const HEAT = 1, HEAD_SCALE = 2.4;
   const MEM_MAX = 800, MEM_REF = 1 / (1 - KEEP_REF);
 
-  const meshU = device.createBuffer({ size: 96, usage: GPUBufferUsage.UNIFORM | CD });
-  const walkU = device.createBuffer({ size: 112, usage: GPUBufferUsage.UNIFORM | CD });
+  const meshU = device.createBuffer({ size: 160, usage: GPUBufferUsage.UNIFORM | CD });
+  const walkU = device.createBuffer({ size: 144, usage: GPUBufferUsage.UNIFORM | CD });
+  const traceU = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | CD });
+  const pathB = device.createBuffer({ size: TRACED * PATH_LEN * 8, usage: S | CD });
   const trailSmp = device.createSampler({ magFilter: "linear", minFilter: "linear" });
 
   const colTex = device.createTexture({
@@ -424,7 +470,7 @@ console.log(`\n— imágenes ${"—".repeat(45)}`);
   /** Misma cámara que `OrbitCamera` en reposo: `frame()` fija la distancia y
    *  los planos, y theta/phi son los valores por defecto de la clase. */
   function camera(radius) {
-    const FOV = (55 * Math.PI) / 180, THETA = 0.6, PHI = 1.15;
+    const FOV = (55 * Math.PI) / 180, THETA = 0.6, PHI = 0.78;   // = PHI_RELIEF
     const d = (radius / Math.tan(FOV / 2)) * 0.92;
     const eye = [Math.sin(PHI) * Math.sin(THETA) * d, Math.cos(PHI) * d,
                  Math.sin(PHI) * Math.cos(THETA) * d];
@@ -434,31 +480,53 @@ console.log(`\n— imágenes ${"—".repeat(45)}`);
 
   async function shoot(si, oi) {
     const surf = SURFACES[si];
+    let head = 0;
     const m = metricsOf(surf);
     writeSurf(si, m);
-    const { vp, proj, d } = camera(m.radius);
+    const { vp, proj, d } = camera(m.radius * 0.95);   // = engine.ts:frame()
     const fogSpan = Math.max(d, m.radius * 0.35) * 2.3;
 
     {
-      const b = new ArrayBuffer(96);
+      // 160 bytes: `MUni` en `surface.wgsl`. Los mínimos van ya en mundo xz,
+      // igual que en `engine.ts:writeMesh` — si una de las dos copias se
+      // desvía, la diana sale en otro sitio y el PNG deja de valer.
+      const b = new ArrayBuffer(160);
       const f = new Float32Array(b);
       f.set(vp, 0);
-      f.set([0.45, 0.78, 0.44, 0], 16);
+      f.set([0.45, 0.78, 0.44, surf.min.length], 16);
       f.set([m.hLo, m.hHi, d - fogSpan * 0.45, fogSpan], 20);
+      for (let i = 0; i < 4; i++) {
+        const q = surf.min[i];
+        f.set(q ? [(q[0] - m.cx) * m.k, (q[1] - m.cy) * m.k, 1, 0] : [0, 0, 0, 0], 24 + i * 4);
+      }
       device.queue.writeBuffer(meshU, 0, b);
     }
     {
       const mem = Math.min(MEM_MAX, 1 / Math.max(1 - KEEP, 1e-6));
       const bright = EXPOSE * (N_REF / WALKERS) * (MEM_REF / mem);
-      const b = new ArrayBuffer(112);
+      // 144 bytes: `Uni` en `render.wgsl`.
+      const b = new ArrayBuffer(144);
       const f = new Float32Array(b);
       f.set(vp, 0);
       f.set([proj[0], proj[5], W, H, d - fogSpan * 0.45, fogSpan,
-             MIN_PX, WALKER_SIZE, bright, LIFT, 0, 0], 16);
+             MIN_PX, WALKER_SIZE, bright, LIFT, m.hLo, m.hHi,
+             HEAT ? 1 : 0, HEAD_SCALE, PATH_LEN, head,
+             TRACED, 0, 0, 0], 16);
       device.queue.writeBuffer(walkU, 0, b);
     }
 
+    // El anillo arranca en la posición de partida, igual que en `engine.ts`.
     const { st, tint } = seedWalkers(surf, WALKERS, 1, WALKER_SIZE);
+    {
+      const seedPath = new Float32Array(TRACED * PATH_LEN * 2);
+      for (let i = 0; i < TRACED; i++) {
+        for (let j = 0; j < PATH_LEN; j++) {
+          seedPath[(i * PATH_LEN + j) * 2] = st[i * 2];
+          seedPath[(i * PATH_LEN + j) * 2 + 1] = st[i * 2 + 1];
+        }
+      }
+      device.queue.writeBuffer(pathB, 0, seedPath);
+    }
     const a = mk(st, S | CD), b2 = mk(new Float32Array(WALKERS * 2), S | CD);
     const acc = mk(new Float32Array(WALKERS * 4), S | CD);
     const tintB = mk(tint, S);
@@ -470,12 +538,30 @@ console.log(`\n— imágenes ${"—".repeat(45)}`);
         { binding: 3, resource: { buffer: stepU, offset: slot * UNI_ALIGN, size: 48 } },
       ],
     });
-    const walkBG = [a, b2].map(p => device.createBindGroup({
-      layout: walkPipe.getBindGroupLayout(0),
+    const wbg = pipe => [a, b2].map(p => device.createBindGroup({
+      layout: pipe.getBindGroupLayout(0),
       entries: [
         { binding: 0, resource: { buffer: walkU } },
         { binding: 1, resource: { buffer: p } },
         { binding: 2, resource: { buffer: tintB } },
+      ],
+    }));
+    const walkBG = wbg(walkPipe);
+    const headBG = wbg(headPipe);
+    const traceBG = device.createBindGroup({
+      layout: tracePipe.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: walkU } },
+        { binding: 2, resource: { buffer: tintB } },
+        { binding: 3, resource: { buffer: pathB } },
+      ],
+    });
+    const recordBG = [a, b2].map(p => device.createBindGroup({
+      layout: recordPipe.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: p } },
+        { binding: 4, resource: { buffer: pathB } },
+        { binding: 5, resource: { buffer: traceU } },
       ],
     }));
 
@@ -495,8 +581,17 @@ console.log(`\n— imágenes ${"—".repeat(45)}`);
         cp.dispatchWorkgroups(Math.ceil(WALKERS / 64));
         cur ^= 1;
       }
+      head = (head + 1) % PATH_LEN;
+      device.queue.writeBuffer(traceU, 0, new Uint32Array([PATH_LEN, head, TRACED, 0]));
+      cp.setPipeline(recordPipe);
+      cp.setBindGroup(0, recordBG[cur]);
+      cp.dispatchWorkgroups(1);
       cp.end();
       stepNo += k;
+      // `pathHead` es el único campo del uniforme que cambia por frame: 4 bytes
+      // en el desplazamiento 124 (índice 31 de floats). Reescribir los 144
+      // enteros funcionaría igual y sería más fácil de desincronizar.
+      device.queue.writeBuffer(walkU, 124, new Float32Array([head]));
 
       const mesh = enc.beginRenderPass({
         colorAttachments: [{
@@ -536,12 +631,25 @@ console.log(`\n— imágenes ${"—".repeat(45)}`);
       tr.draw(6, WALKERS);
       tr.end();
 
+      // Composición y bolitas en la misma pasada, en ese orden: la estela suma
+      // luz sobre el relieve y las cabezas se dibujan encima con mezcla alfa.
       const comp = enc.beginRenderPass({
         colorAttachments: [{ view: colTex.createView(), loadOp: "load", storeOp: "store" }],
+        depthStencilAttachment: {
+          view: depthTex.createView(), depthLoadOp: "load", depthStoreOp: "store",
+        },
       });
       comp.setPipeline(compPipe);
       comp.setBindGroup(0, compBG);
       comp.draw(3);
+      comp.setPipeline(tracePipe);
+      comp.setBindGroup(0, traceBG);
+      comp.setBindGroup(1, traceG1);
+      comp.draw(6, TRACED * PATH_LEN);
+      comp.setPipeline(headPipe);
+      comp.setBindGroup(0, headBG[cur]);
+      comp.setBindGroup(1, headG1);
+      comp.draw(6, WALKERS);
       comp.end();
 
       device.queue.submit([enc.finish()]);

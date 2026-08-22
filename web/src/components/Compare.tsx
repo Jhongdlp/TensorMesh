@@ -5,6 +5,7 @@ import type { Index } from "../galaxy/search.mjs";
 import { MAX_WORDS, matrix, ranked, shared, typical, mds } from "../galaxy/compare.mjs";
 import { shortestPath } from "../galaxy/path.mjs";
 import WordSearch from "./WordSearch";
+import Foot, { type WhyLink } from "./Foot";
 
 /** El comparador: varias palabras a la vez, medidas en 300D.
  *
@@ -67,7 +68,7 @@ export interface CompareCopy {
 }
 
 export default function Compare({
-  g, index, vec, zoneCss, t, ids, onIds, onWord, onPair, onGroup,
+  g, index, vec, zoneCss, t, why, ids, onIds, onWord, onPair, onGroup,
 }: {
   g: Galaxy;
   index: Index;
@@ -82,6 +83,10 @@ export default function Compare({
   onPair: (a: number, b: number) => void;
   /** Resaltar el grupo entero en la galaxia. */
   onGroup: (nodes: number[]) => void;
+  /** El «por qué» del pie: abre el capítulo de las 300 dimensiones, que es
+   *  donde se explica qué se pierde al aplanar — que es lo que el estrés de la
+   *  constelación está midiendo. */
+  why?: WhyLink;
 }) {
   // Los vectores llegan por HTTP y el render no puede esperarlos. Este contador
   // es el único estado que provoca el repintado cuando aterrizan: la caché vive
@@ -339,7 +344,7 @@ export default function Compare({
           <div className="ctl-row">
             <button onClick={() => onIds([])}>{t.clear}</button>
           </div>
-          <p className="foot">{t.foot}</p>
+          <Foot why={why}>{t.foot}</Foot>
         </>
       )}
       {busy && ids.length >= 2 && pares && <p className="stat hint">{t.loading}</p>}

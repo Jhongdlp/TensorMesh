@@ -83,3 +83,32 @@ fn step(@builtin(global_invocation_id) gid: vec3u) {
   acc[i] = a;
   stOut[i] = confine(p);
 }
+
+// ------------------------------------------------------ el rastro de los cinco
+//
+// Un anillo de posiciones por cada caminante seguido. Es lo único de la sala
+// que guarda historia, y se puede permitir guardarla porque son cinco: cinco
+// por 384 frames por ocho bytes son quince kilobytes. Hacerlo para los ocho mil
+// serían 24 MB y un montón de geometría que rasterizar, que es exactamente el
+// cálculo que llevó a que la estela fuese una textura y no un historial.
+//
+// El anillo se escribe **después** de los pasos de este frame y en la misma
+// pasada de cómputo: los dispatches de una pasada se ordenan entre sí, así que
+// lo que se graba es el estado recién calculado y no el del frame anterior.
+
+struct Trace {
+  len    : u32,
+  head   : u32,   // ranura que toca escribir
+  traced : u32,
+  pad0   : u32,
+};
+
+@group(0) @binding(4) var<storage, read_write> path : array<vec2f>;
+@group(0) @binding(5) var<uniform>             T    : Trace;
+
+@compute @workgroup_size(64)
+fn record(@builtin(global_invocation_id) gid: vec3u) {
+  let i = gid.x;
+  if (i >= T.traced) { return; }
+  path[i * T.len + T.head] = stIn[i];
+}

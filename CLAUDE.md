@@ -475,56 +475,132 @@ son justo las que se está mirando.
 
 Cualquier cambio de parámetro que deba verse debe llamar a `invalidate()`.
 
-## Segunda sala: `descenso` (fase 00)
+## El armazón compartido: `styles/shell.css` y `components/icons.tsx`
 
-`web/src/pages/descenso.astro` + `web/src/rooms/descent/`. Descenso de gradiente
-sobre Rosenbrock con 10.000 caminantes soltados a la vez. Existe para contestar
-una pregunta concreta: **si el armazón del atlas se despega de su dato**. La
-respuesta, medida:
+El **mueble** de la página vive fuera de cada sala. `web/src/styles/shell.css`
+tiene los tokens de tinta, el cajón izquierdo con su tira de herramientas, el
+raíl derecho, la ficha, las píldoras del lienzo y el modo inmersivo; los iconos
+de la tira están en `web/src/components/icons.tsx`. La clase raíz es `.shell`
+más las de estado (`side-open`, `zen`).
+
+El reparto es el mismo en todas las salas y **no** es decorativo:
+
+- **izquierda**, lo que se elige y se ajusta;
+- **derecha**, lo que la sala tiene que decir ahora mismo;
+- **el lienzo**, para lo que se ha venido a ver, con las salidas apareciendo
+  sólo cuando hacen falta.
+
+Salió de aquí porque la sala del descenso se había inventado un mueble propio
+—chips de diez píxeles a la derecha y un pie sin una sola regla de estilo, que
+se dibujaba encima del título porque nadie le había dado posición— y no tenía
+parentesco visible con el atlas. Ahora `descenso.astro` importa `shell.css` y
+sólo escribe lo suyo.
+
+**Lo que todavía no está resuelto**: `galaxia.astro` sigue llevando su propia
+copia de esas reglas dentro de su `<style is:global>`. Es la implementación de
+referencia —`shell.css` salió de ella— y por eso no se ha vaciado todavía: hay
+diferencias de un par de píxeles en `.ctl`, `.held` y `.ctl-row`, y fundirlas
+cambiaría el aspecto del atlas, que no era lo que se estaba arreglando. `.shell`
+ya está en su clase raíz, así que el día que se unifiquen los valores basta con
+importar la hoja y borrar el bloque. Los iconos **sí** están ya compartidos.
+
+## Segunda sala: `descenso` (fase 01)
+
+`web/src/pages/descenso.astro` + `web/src/rooms/descent/`. Cinco superficies
+clásicas, tres optimizadores, relieve sombreado con curvas de nivel, estelas por
+acumulación en pantalla y presupuesto de frame.
+
+La fase 00 preguntaba si el armazón del atlas se despega de su dato. La
+respuesta, medida y todavía vigente:
 
 - **Se hereda entero el armazón.** `gpu/camera.ts` y `keys.mjs` entran sin tocar
-  una línea —órbita, rueda, vuelo con teclado e `Inicio` funcionan solos—, y
-  `palette.mjs` colorea los caminantes con la misma rampa de nebulosa.
+  una línea —órbita, rueda, vuelo con teclado e `Inicio` funcionan solos—,
+  `palette.mjs` tiñe el color por origen y, desde el rediseño, `shell.css` e
+  `icons.tsx` ponen la interfaz entera.
 - **No se hereda ningún shader.** `physics.wgsl`, `cull.wgsl` y `pick.wgsl` no
   aplican; tampoco `loader.ts`, el CSR ni el canal de resalte.
-- **Cuesta 0,49 ms de los 15** del presupuesto (10.000 caminantes, 8 pasos por
-  frame). El paso es local y sin vecinos: mucho más barato que LinLog.
+- **El paso cuesta ~3,5 ms de los 15** a 40.000 caminantes y 8 pasos por frame.
+  Es local y sin vecinos: mucho más barato que LinLog.
 
 Página aparte y no un modo de `index.astro` a propósito: `Galaxy.tsx` habla en
 vocabulario de grafo y no generaliza, un canvas no admite WebGL y WebGPU a la
-vez, y quien viene por el gradiente no debe descargar los 2,1 MB del atlas. **No
-hay enlace desde la portada**: la galería es fase 03, y una sala a medias
-enlazada desde la primera pantalla promete algo que todavía no está.
+vez, y quien viene por el gradiente no debe descargar los 2,1 MB del atlas.
 
-Tres cosas que no son obvias y que se rompen solas:
+### Cómo se dibuja, y por qué así
 
-- **`field.wgsl` se antepone** a `walkers.wgsl` y a `render.wgsl` al crear los
-  módulos. La función y su gradiente se definen una vez: el paso baja por el
-  gradiente y el vértice necesita la altura, y dos copias dejan al caminante
-  flotando sobre una superficie que no es la que desciende.
+Cuatro decisiones que son el rediseño entero, y las cuatro contestan a lo mismo:
+la sala se veía **rara y muda** — una tela marrón con confeti encima.
+
+- **La bolita se dibuja dos veces.** `vsWalker`/`fsWalker` va dentro de la
+  textura de estelas, en aditivo, pequeña y tenue: es el rastro. `vsHead`/`fsHead`
+  va **sobre el lienzo ya compuesto**, con mezcla alfa y sombreado de esfera
+  (normal reconstruida del propio quad, difuso, especular duro y filo): es la
+  bolita. Un solo dibujo aditivo hace muy bien el flujo y muy mal *un
+  caminante*, y la pregunta de la sala es cómo baja **uno**. La cabeza va en la
+  pasada de composición, después de la estela: al revés, la estela le sumaría
+  luz encima y volveríamos al confeti. Por eso esa pasada tiene ahora adjunto de
+  profundidad y `compPipe` declara un `depthStencil` que no lee ni escribe.
+- **Curvas de nivel en el relieve** (`band()` en `surface.wgsl`, ancho constante
+  en pantalla vía `fwidth`). La malla sombreada dice dónde hay pendiente pero no
+  cuánta. Las curvas van sobre la altura de mundo —que es la pérdida en
+  logaritmo—, así que cada una es un escalón igual: se apiñan donde cae rápido y
+  se separan donde el valle es plano. Es lo que convierte el relieve en un mapa.
+- **Diana en cada mínimo conocido** (`Surface.min` en `field.mjs`, ya en mundo
+  xz al escribir el uniforme). Sin blanco a la vista, «descender» no tiene a
+  dónde. En Himmelblau son cuatro y ésa es la superficie entera; **la silla no
+  tiene ninguna, y que no la haya es su respuesta**. El bucle de las cuatro
+  ranuras va **sin `continue`** —apaga multiplicando por `m.z`— porque `fwidth`
+  es una derivada y no todos los backends la admiten bajo una rama.
+- **La vertical se aplanó y la cámara subió.** `H_SPAN` pasó de 4,3 a 2,2 y el
+  ángulo polar por defecto de 1,15 rad a 0,78 (`PHI_RELIEF`). Con la vertical
+  tan alta como el ancho y la cámara casi de canto, el relieve no parecía un
+  paisaje sino una tela doblada: las paredes de pérdida alta se levantaban por
+  encima de la cámara, tapaban el valle y se acababa mirando la cara de abajo de
+  la malla. El encuadre usa `radius · 0,95`: menos recorta las esquinas del
+  dominio, que en la silla es justo por donde se escapan.
+
+Y dos que son de reparto, no de dibujo:
+
+- **`N_DEFAULT` bajó de 40.000 a 8.000**, con `N_REF = 40.000` aparte como
+  referencia de exposición. A cuarenta mil, con dos píxeles de radio y mezcla
+  aditiva, lo que se ve es niebla. El mando sigue llegando a `N_MAX`.
+- **El color del caminante es un mando** (`Options.heat`). Por **altura** —rojo
+  arriba, cian abajo— el enjambre se enfría al bajar y «asentado» deja de ser
+  una palabra del HUD; por **origen** es el mapa de cuencas de Himmelblau.
+  Arranca en altura porque es la que se entiende sin leer nada. Cambiarlo borra
+  la estela: media traza contando la lectura anterior es peor que ninguna.
+
+### Lo que se rompe solo si se toca
+
+- **`field.wgsl` se antepone** a `walkers.wgsl`, `surface.wgsl` y `render.wgsl`
+  al crear los módulos. La función y su gradiente se definen una vez: el paso
+  baja por el gradiente y el vértice necesita la altura, y dos copias dejan al
+  caminante flotando sobre una superficie que no es la que desciende.
 - **Rosenbrock tiene dos tiempos con un factor 400 entre ellos.** El término en
   y es `200·(y − x²)`, así que en menos de diez pasos todos han caído sobre la
   parábola; recorrerla hasta (1,1) cuesta cuatro mil. Por eso el motor va a un
-  paso por frame los primeros 40 y a ocho después: a ocho desde el principio, el
-  primer acto dura dos frames y no se ve.
+  paso por frame los primeros 40 y a ocho después. El botón de **un paso**
+  (`stepOnce`, tecla `N`) existe por lo mismo: nadie ve lo que no puede parar.
 - **`projXX`/`projYY` salen de la proyección, no de `viewProj`.** Mismo error
   que ya documenta el atlas: con `viewProj[0]` el caminante cambia de tamaño al
   orbitar.
+- El rastro y la bolita leen exactamente lo mismo, pero con `layout: "auto"`
+  cada pipeline se inventa su propio layout: hacen falta **dos juegos de bind
+  groups**, no uno.
 
 ```bash
 node test/descent.mjs                       # compila shaders + numpy + PNG
+DESC_FRAMES=14 DESC_N=2500 node test/descent.mjs   # a medio descender
 python3 pipeline/export_descent_fixture.py  # regenera data/fixture/descent/
 ```
 
-`test/descent.mjs` escribe `data/descent.png` con tres paneles (0, 40 y 4.000
-pasos). Es media prueba: Chrome en esta máquina cae al respaldo WebGL —donde
-este shader no existe— y en headless apenas corre ocho frames antes de la
-captura, así que el estado convergido **sólo** se puede ver por Dawn.
-
-Lo que la fase 00 deja aprendido para la 01: al converger, los diez mil
-caminantes caben en un punto y el último panel sale casi vacío. **Las estelas no
-son un adorno de la fase 01, son el requisito** para que el estado final diga
-algo.
+`test/descent.mjs` escribe `data/descent.png` (las cinco superficies) y
+`data/descent_opt.png` (los tres optimizadores sobre Rosenbrock). **Míralos, son
+media prueba.** La corrida por defecto llega a converger, y ahí las bolitas
+están todas metidas en la aguja del mínimo: para ver *cómo bajan* hay que parar
+antes con `DESC_FRAMES`. Chrome en esta máquina cae al respaldo WebGL —donde
+estos shaders no existen—, así que el estado convergido **sólo** se puede ver
+por Dawn.
 
 ## Layouts duplicados (lo que se rompe en silencio)
 
@@ -539,7 +615,9 @@ Tres sitios describen los mismos bytes y **no hay tipo compartido entre ellos**:
 | Bind group de cull (7 entradas) | `engine.ts:cullBGL` | `cull.wgsl`, `test/render.mjs:cullBGL` |
 | Uniform de pick (96 B) | `engine.ts:pick` | `pick.wgsl:PickU`, `test/render.mjs` |
 | `vecs.bin` (300 B/palabra) | `pipeline/vectors.py` | `galaxy/vectors.ts`, `test/unit.mjs` |
-| Uniform de la sala (96 B) | `rooms/descent/engine.ts:writeUni` | `rooms/descent/render.wgsl:Uni`, `test/descent.mjs` |
+| Uniform del relieve (160 B) | `rooms/descent/engine.ts:writeMesh` | `rooms/descent/surface.wgsl:MUni`, `test/descent.mjs` |
+| Uniform del caminante (128 B) | `rooms/descent/engine.ts:writeWalker` | `rooms/descent/render.wgsl:Uni`, `test/descent.mjs` |
+| Encuadre y ángulo de la sala | `rooms/descent/engine.ts` (`PHI_RELIEF`, `radius·0,95`) | `test/descent.mjs:camera` |
 | Dominio y altura del campo | `rooms/descent/field.wgsl` | `rooms/descent/field.mjs` (encuadre y siembra) |
 
 `perspective`/`lookAt`/`multiply` viven en `test/mat.mjs` y el codificador PNG en
