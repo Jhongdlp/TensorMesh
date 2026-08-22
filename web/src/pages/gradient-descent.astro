@@ -1,21 +1,27 @@
 ---
-return Astro.redirect("/gradient-descent", 301);
+// Sala 02 — descenso de gradiente.
+//
+// Página aparte y no un modo dentro de `index.astro`. Tres razones, todas
+// comprobables en el código de al lado: `Galaxy.tsx` son 1.400 líneas cuyo
+// vocabulario es de grafo (`select(id)`, `selectPath`, comunidades) y no
+// generaliza; un canvas no puede tener contexto WebGL y WebGPU a la vez y el
+// motor se elige una sola vez en arranque; y quien viene por el gradiente no
+// tiene por qué descargar los 2,1 MB de binarios del atlas.
+//
+// **El mueble sí es el mismo.** `styles/shell.css` trae el cajón izquierdo, la
+// tira de herramientas, el raíl derecho y las píldoras del lienzo, exactamente
+// los de la galaxia. Aquí abajo sólo queda lo que es de esta sala y de ninguna
+// otra: el cartel de «sin WebGPU», la barra de progreso, la ficha de la
+// superficie y las muestras de la leyenda.
+import Descent from "../rooms/descent/Descent.tsx";
+import "../styles/shell.css";
 ---
 
 <html lang="es">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="refresh" content="0;url=/gradient-descent" />
-    <link rel="canonical" href="/gradient-descent" />
-    <title>Redirecting to Gradient Descent...</title>
-    <script is:inline>
-      window.location.replace("/gradient-descent" + window.location.search);
-    </script>
-  </head>
-  <body>
-    <p>Redirecting to <a href="/gradient-descent">Gradient Descent</a>...</p>
-  </body>
-</html>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Gradient Descent · Atlas Vectorial</title>
     <meta
       name="description"
       content="Descenso de gradiente dibujado como campo: miles de caminantes soltados a la vez sobre cinco superficies clásicas."

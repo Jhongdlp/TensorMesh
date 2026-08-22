@@ -1,24 +1,24 @@
 ---
-return Astro.redirect("/gradient-descent", 301);
+return Astro.redirect("/self-organizing-maps", 301);
 ---
 
 <html lang="es">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="refresh" content="0;url=/gradient-descent" />
-    <link rel="canonical" href="/gradient-descent" />
-    <title>Redirecting to Gradient Descent...</title>
+    <meta http-equiv="refresh" content="0;url=/self-organizing-maps" />
+    <link rel="canonical" href="/self-organizing-maps" />
+    <title>Redirecting to Self-Organizing Maps...</title>
     <script is:inline>
-      window.location.replace("/gradient-descent" + window.location.search);
+      window.location.replace("/self-organizing-maps" + window.location.search);
     </script>
   </head>
   <body>
-    <p>Redirecting to <a href="/gradient-descent">Gradient Descent</a>...</p>
+    <p>Redirecting to <a href="/self-organizing-maps">Self-Organizing Maps</a>...</p>
   </body>
 </html>
     <meta
       name="description"
-      content="Descenso de gradiente dibujado como campo: miles de caminantes soltados a la vez sobre cinco superficies clásicas."
+      content="Redes neuronales autoorganizadas de Kohonen dibujadas como mallas elásticas 3D que aprenden y envuelven geometrías complejas mediante WebGPU."
     />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -27,12 +27,10 @@ return Astro.redirect("/gradient-descent", 301);
     />
   </head>
   <body>
-    <Descent client:only="react" />
+    <Som client:only="react" />
 
     <style is:global>
-      /* --------------------------------------------------- sin WebGPU
-         Ocupa la pantalla entera: sin el paso de cómputo no hay sala, así que
-         no hay nada detrás que dejar ver. */
+      /* --------------------------------------------------- sin WebGPU */
       .room-nogpu {
         position: absolute;
         inset: 0;
@@ -67,11 +65,7 @@ return Astro.redirect("/gradient-descent", 301);
         color: var(--ink);
       }
 
-      /* ------------------------------------------------ barra de progreso
-         La corrida son 6.000 pasos y un contador suelto no lo dice. La barra
-         además enseña los dos tiempos de estas funciones sin escribirlos: se
-         llena despacio los primeros cuarenta pasos —van de uno en uno para que
-         el primer acto se vea— y de golpe a partir de ahí. */
+      /* ------------------------------------------------ barra de progreso */
       .room-descent .bar {
         height: 3px;
         background: var(--rule);
@@ -106,15 +100,9 @@ return Astro.redirect("/gradient-descent", 301);
       }
       .room-descent .note b { color: #fff; font-weight: 600; }
       .room-descent .phase { margin-top: 1rem; color: var(--ink-4); }
-      /* La ficha tiene tope de alto y su cuerpo hace scroll: con las notas
-         desplegadas, Beale escribe media pantalla y sin tope empuja el HUD
-         fuera del raíl. */
       .room-descent .rail-r .card { margin-top: auto; max-height: 62vh; }
 
-      /* ---------------------------------------------------------- la leyenda
-         Cada renglón lleva su muestra pegada al texto que la explica. Una
-         leyenda con las muestras en una columna y los nombres en otra obliga a
-         hacer la correspondencia con el dedo. */
+      /* ---------------------------------------------------------- la leyenda */
       .room-descent .key-line {
         display: flex;
         align-items: flex-start;
@@ -133,24 +121,12 @@ return Astro.redirect("/gradient-descent", 301);
         border-radius: 2px;
         box-shadow: 0 0 0 1px #0006 inset;
       }
-      /* Los mismos cinco anclajes que `lossRamp` en `surface.wgsl`. */
       .room-descent .ramp-loss {
-        background: linear-gradient(90deg,
-          #0d1440, #33256e, #7a2f76, #c25a3c, #f2c46b);
+        background: linear-gradient(90deg, #1266f2, #24b0f0, #f2c420, #ff3818);
       }
-      /* Las curvas: escalones iguales, apretándose. */
-      .room-descent .ramp-hist {
-        background:
-          repeating-linear-gradient(90deg,
-            rgba(255, 226, 200, 0.85) 0 1px, transparent 1px 4px),
-          linear-gradient(90deg, #7a2f76, #c25a3c);
-      }
-      /* Los mismos cuatro anclajes que `heatRamp` en `render.wgsl`. */
       .room-descent .ramp-heat {
-        background: linear-gradient(90deg, #9efffa, #73dbff, #ffc75c, #ff4d29);
+        background: linear-gradient(90deg, #ff4070, #00f0ff, #f0ff00);
       }
-      /* `ramp-origin` recibe su fondo desde el JSX, calculado con `rampCss`:
-         la copia escrita a mano se desincroniza en cuanto se toque la paleta. */
       .room-descent .ramp-target {
         background:
           radial-gradient(circle at 50% 50%,
@@ -159,9 +135,6 @@ return Astro.redirect("/gradient-descent", 301);
           #241a2e;
       }
 
-      /* Un botón de la tira que no aplica ahora mismo —«un paso» mientras
-         corre— se apaga en vez de desaparecer: un mueble al que le cambia el
-         número de botones hace que los demás salten de sitio. */
       .room-descent .tool:disabled {
         opacity: 0.3;
         cursor: default;
@@ -169,12 +142,6 @@ return Astro.redirect("/gradient-descent", 301);
       .room-descent .tool:disabled:hover {
         background: var(--btn);
         color: var(--ink-3);
-      }
-
-      /* En pantallas bajas la ficha se lleva el raíl entero; el HUD, que es la
-         lectura en vivo, no puede quedarse sin sitio. */
-      @media (max-height: 640px) {
-        .room-descent .rail-r .card { max-height: 46vh; }
       }
     </style>
   </body>

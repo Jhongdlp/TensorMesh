@@ -206,73 +206,182 @@ function seamCells(seed: string, erode: boolean): Cell[] {
 const SEAM_CELLS = seamCells(MASK[ROWS - 1], true);
 const SEAM_FLAT_CELLS = seamCells("1".repeat(COLS), false);
 
-/* ------------------------------------------------------------------ salas */
+/* ------------------------------------------------------------------ glifos con motion algorítmico */
 
-/* El emblema de cada sala se dibuja con la misma celda que la portada, no con
- * un icono de trazo: un pictograma de línea fina al lado de una rejilla de
- * píxeles se lee como venido de otro sitio. Diez por ocho es el tamaño en el
- * que un dibujo de píxeles todavía dice algo — con 8x8 el valle de la segunda
- * sala se convierte en una uve genérica.
- *
- * Y no son ilustraciones: cada uno enseña lo que la sala hace. Un cúmulo con
- * cuatro rezagados (el grafo podado deja islas), un valle con dos caminantes
- * ya en el fondo, y ruido sin forma para la que no existe. */
-const GLYPHS: Record<string, string[]> = {
-  nebula: [
-    "0010000100",
-    "0001110000",
-    "0011111000",
-    "0111111100",
-    "0011111010",
-    "1001110000",
-    "0010001000",
-    "0000100000",
-  ],
-  descent: [
-    "1000000001",
-    "1000000001",
-    "0100000010",
-    "0100000010",
-    "0010000100",
-    "0011001100",
-    "0000110000",
-    "0000110000",
-  ],
-  noise: [
-    "0010000100",
-    "0000100000",
-    "1000000010",
-    "0001000000",
-    "0000001000",
-    "0100000001",
-    "0000010000",
-    "0010000000",
-  ],
-};
+function NebulaMotionGlyph({ isHovered }: { isHovered: boolean }) {
+  const [tick, setTick] = useState(0);
 
-function Glyph({ name }: { name: keyof typeof GLYPHS }) {
-  const rows = GLYPHS[name];
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTick((t) => (t + 1) % 60);
+    }, isHovered ? 60 : 120);
+    return () => clearInterval(timer);
+  }, [isHovered]);
+
+  const grid: number[][] = Array.from({ length: 8 }, () => Array(10).fill(0));
+  const t = tick * 0.105;
+
+  // Núcleo gravitacional central con micro-pulsación
+  grid[3][4] = 1; grid[3][5] = 1;
+  grid[4][4] = 1; grid[4][5] = 1;
+  if (Math.sin(t * 2) > 0.3) {
+    grid[2][4] = 1; grid[5][5] = 1;
+  }
+
+  // 3 partículas en trayectorias armónicas de atracción
+  const p1x = Math.round(4.5 + Math.cos(t * 1.2) * 3.2);
+  const p1y = Math.round(3.5 + Math.sin(t * 1.2) * 2.1);
+  if (p1y >= 0 && p1y < 8 && p1x >= 0 && p1x < 10) grid[p1y][p1x] = 1;
+
+  const p2x = Math.round(4.5 + Math.cos(t * 0.9 + 2.2) * 3.6);
+  const p2y = Math.round(3.5 + Math.sin(t * 1.5 + 2.2) * 2.5);
+  if (p2y >= 0 && p2y < 8 && p2x >= 0 && p2x < 10) grid[p2y][p2x] = 1;
+
+  const p3x = Math.round(4.5 + Math.cos(t * 1.6 + 4.1) * 2.5);
+  const p3y = Math.round(3.5 + Math.sin(t * 0.8 + 4.1) * 2.8);
+  if (p3y >= 0 && p3y < 8 && p3x >= 0 && p3x < 10) grid[p3y][p3x] = 1;
+
+  // Aristas de grafo que se conectan cuando dos partículas se acercan
+  const dist12 = Math.hypot(p1x - p2x, p1y - p2y);
+  if (dist12 <= 3.5) {
+    const mx = Math.round((p1x + p2x) / 2);
+    const my = Math.round((p1y + p2y) / 2);
+    if (my >= 0 && my < 8 && mx >= 0 && mx < 10) grid[my][mx] = 1;
+  }
+
+  const dist23 = Math.hypot(p2x - p3x, p2y - p3y);
+  if (dist23 <= 3.5) {
+    const mx = Math.round((p2x + p3x) / 2);
+    const my = Math.round((p2y + p3y) / 2);
+    if (my >= 0 && my < 8 && mx >= 0 && mx < 10) grid[my][mx] = 1;
+  }
+
   return (
     <div className="landing-glyph" aria-hidden="true">
-      {rows.flatMap((row, r) =>
-        [...row].map((ch, c) => (
-          <span key={`${r}-${c}`} className={ch === "1" ? "gp gp-on" : "gp"} />
+      {grid.flatMap((row, r) =>
+        row.map((on, c) => (
+          <span key={`${r}-${c}`} className={on ? "gp gp-on" : "gp"} />
         )),
       )}
     </div>
   );
 }
 
+function DescentMotionGlyph({ isHovered }: { isHovered: boolean }) {
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTick((t) => (t + 1) % 24);
+    }, isHovered ? 70 : 130);
+    return () => clearInterval(timer);
+  }, [isHovered]);
+
+  const grid: number[][] = Array.from({ length: 8 }, () => Array(10).fill(0));
+
+  // Relieve de contorno del cañón / valle parabólico
+  grid[0][0] = 1; grid[0][9] = 1;
+  grid[1][0] = 1; grid[1][9] = 1;
+  grid[2][1] = 1; grid[2][8] = 1;
+  grid[3][1] = 1; grid[3][8] = 1;
+  grid[4][2] = 1; grid[4][7] = 1;
+  grid[5][2] = 1; grid[5][7] = 1;
+  grid[6][3] = 1; grid[6][4] = 1; grid[6][5] = 1; grid[6][6] = 1;
+  grid[7][4] = 1; grid[7][5] = 1;
+
+  // Partícula 1 cayendo por el gradiente con aceleración e inercia
+  const progress = (tick % 12) / 11;
+  const easeY = Math.min(7, Math.floor(progress * progress * 7.9));
+  let easeX = 0;
+  if (easeY <= 1) easeX = 0;
+  else if (easeY <= 3) easeX = 1;
+  else if (easeY <= 5) easeX = 2;
+  else if (easeY === 6) easeX = 3;
+  else easeX = (tick % 2 === 0) ? 4 : 5;
+
+  grid[easeY][easeX] = 1;
+
+  // En hover o en la segunda mitad del ciclo, cae un segundo caminante por el lado opuesto
+  if (isHovered || tick >= 6) {
+    const p2Progress = ((tick + 6) % 12) / 11;
+    const w2Y = Math.min(7, Math.floor(p2Progress * p2Progress * 7.9));
+    let w2X = 9;
+    if (w2Y <= 1) w2X = 9;
+    else if (w2Y <= 3) w2X = 8;
+    else if (w2Y <= 5) w2X = 7;
+    else if (w2Y === 6) w2X = 6;
+    else w2X = (tick % 2 === 0) ? 5 : 4;
+    grid[w2Y][w2X] = 1;
+  }
+
+  return (
+    <div className="landing-glyph" aria-hidden="true">
+      {grid.flatMap((row, r) =>
+        row.map((on, c) => (
+          <span key={`${r}-${c}`} className={on ? "gp gp-on" : "gp"} />
+        )),
+      )}
+    </div>
+  );
+}
+
+function SomMotionGlyph({ isHovered }: { isHovered: boolean }) {
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTick((t) => (t + 1) % 36);
+    }, isHovered ? 60 : 120);
+    return () => clearInterval(timer);
+  }, [isHovered]);
+
+  const grid: number[][] = Array.from({ length: 8 }, () => Array(10).fill(0));
+  const t = (tick / 36) * Math.PI * 2;
+
+  // Hoja topológica que respira y se pliega armónicamente
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 10; c++) {
+      const dx = (c - 4.5) / 4.5;
+      const dy = (r - 3.5) / 3.5;
+      const rDist = Math.sqrt(dx * dx + dy * dy);
+      
+      // Onda elástica 2D
+      const wave = Math.sin(rDist * 4.2 - t) + Math.cos(dx * 3.0 + t * 0.8) * 0.5;
+      const threshold = isHovered ? 0.35 : 0.28;
+      
+      if (Math.abs(wave) < threshold) {
+        grid[r][c] = 1;
+      }
+    }
+  }
+
+  return (
+    <div className="landing-glyph" aria-hidden="true">
+      {grid.flatMap((row, r) =>
+        row.map((on, c) => (
+          <span key={`${r}-${c}`} className={on ? "gp gp-on" : "gp"} />
+        )),
+      )}
+    </div>
+  );
+}
+
+function RoomGlyph({ name, isHovered }: { name: "nebula" | "descent" | "som"; isHovered: boolean }) {
+  if (name === "nebula") return <NebulaMotionGlyph isHovered={isHovered} />;
+  if (name === "descent") return <DescentMotionGlyph isHovered={isHovered} />;
+  return <SomMotionGlyph isHovered={isHovered} />;
+}
+
 interface Room {
   id: string;
-  glyph: keyof typeof GLYPHS;
+  glyph: "nebula" | "descent" | "som";
+  previewImg?: string;
+  previewAlt?: string;
   status: string;
   title: string;
   desc: string;
-  /** Sin `href` la sala no existe todavía y la placa no se pulsa. */
-  href?: string;
-  action?: string;
-  /** Las salas del atlas salen por la transición; el resto son enlaces. */
+  href: string;
+  action: string;
   intercept?: boolean;
 }
 
@@ -280,64 +389,153 @@ const ROOMS: Room[] = [
   {
     id: "01",
     glyph: "nebula",
+    previewImg: "/previews/nebula-en.png",
+    previewAlt: "Embedding Nebula (50,000 words in 3D, English graph)",
     status: "Open",
     title: "Embedding Nebula",
     desc:
       "50,000 words placed in 3D by simulating springs over their nearest-neighbor graph — not by dimension reduction. Color is neighborhood; every similarity you read is measured back in the original 300 dimensions.",
-    href: "/galaxia",
+    href: "/embedding-nebula",
     action: "Enter the galaxy",
-    intercept: true,
   },
   {
     id: "02",
     glyph: "descent",
+    previewImg: "/previews/descent.png",
+    previewAlt: "Gradient Descent (Rosenbrock surface & 40,000 GPU walkers)",
     status: "Open",
     title: "Gradient Descent",
     desc:
       "Ten thousand walkers dropped at once onto the Rosenbrock surface. They fall onto the parabola within ten steps and then spend four thousand crawling along it — which is the whole trouble with a ravine.",
-    href: "/descenso",
+    href: "/gradient-descent",
     action: "Run the descent",
   },
   {
     id: "03",
-    glyph: "noise",
-    status: "Unbuilt",
-    title: "Next Room",
+    glyph: "som",
+    previewImg: "/previews/som.png",
+    previewAlt: "Self-Organizing Maps (3D neural topological sheet adaptation)",
+    status: "Open",
+    title: "Self-Organizing Maps",
     desc:
-      "Whatever lands here follows the rule the first two follow: no slides, no recorded video. The thing itself, computed in front of you, with the numbers it claims measured where they actually live.",
+      "A 3D grid of neural nodes stretching and folding in real-time to fit a 3D point cloud. You can choose different target shapes (spheres, toruses, double helices, Lorenz attractors) and watch the topological sheet adapt using WebGPU compute shaders.",
+    href: "/self-organizing-maps",
+    action: "Run the map",
   },
 ];
+
+/* ------------------------------------------------------------------ rejilla de fondo de salas */
+
+/* Topografía de masas claras y oscuras para la segunda sección.
+ * Silueta arquitectónica minimalista que continúa la estética del Hero:
+ * - Campo oscuro limpio en la parte superior continuando la costura erosionada.
+ * - Descenso diagonal con dithering orgánico y números de vecindad (.gnum)
+ *   que aterriza en una masa sólida en la parte inferior derecha para anclar el pie.
+ * - Elimina por completo las manchas fragmentadas laterales ("manchas de vaca"). */
+const ROOMS_MASK = [
+  "000000000000000000000000000000000000000000000000",
+  "000000000000000000000000000000000000000000000000",
+  "000000000000000000000000000000000000000000000000",
+  "000000000000000000000000000000000000000000000000",
+  "000000000000000000000000000000000000000000000000",
+  "000000000000000000000000000000000000000000000000",
+  "000000000000000000000000000000000000000000000000",
+  "000000000000000000000000000000000000000000000000",
+  "000000000000000000000000000000000000000000000000",
+  "000000000000000000000000000000000000000000000000",
+  "000000000000000000000000000000000000000000000000",
+  "000000000000000000000000000000000000000000000000",
+  "000000000000000000000000000000000000000000000000",
+  "000000000000000000000000000000000000000000000000",
+  "000000000000000000000000000000000000000000010001",
+  "000000000000000000000000000000000000000001110111",
+  "000000000000000000000000000000000000001001111111",
+  "000000000000000000000000000000000000011111111111",
+  "000000000000000000000000000000000010111111111111",
+  "000000000000000000000000000000000111111111111111",
+  "000000000000000000000000000000010111111111111111",
+  "000000000000000000000000000001111111111111111111",
+  "000000000000000000000000001011111111111111111111",
+  "000000000000000000000000011111111111111111111111",
+  "000000000000000000000010011111111111111111111111",
+  "000000000000000000000111111111111111111111111111",
+  "000000000000000000010111111111111111111111111111",
+  "000000000000000000111111111111111111111111111111",
+];
+
+const ROOMS_ROWS = ROOMS_MASK.length;
+
+function buildRoomsBgCells(): Cell[] {
+  const out: Cell[] = [];
+  for (let r = 0; r < ROOMS_ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const light = ROOMS_MASK[r][c] === "1";
+      out.push({ light, n: light ? neighbours(ROOMS_MASK, r, c) : 0 });
+    }
+  }
+  return out;
+}
+
+const ROOMS_BG_CELLS = buildRoomsBgCells();
 
 interface LandingPageProps {
   onExplore: () => void;
 }
 
-/* La portada va en inglés y sin diccionario, a diferencia del resto del atlas.
- * Es la primera pantalla de un proyecto sobre embeddings y su público llega
- * de fuera; el conmutador de idioma sigue vivo dentro del atlas. */
 export default function LandingPage({ onExplore }: LandingPageProps) {
   const [transitioning, setTransitioning] = useState(false);
+  const [hoveredRoom, setHoveredRoom] = useState<string | null>(null);
+  
+  // Rejilla de salas reactiva con física de píxeles
+  const [roomsGrid, setRoomsGrid] = useState<Cell[]>(ROOMS_BG_CELLS);
+  
   const glowRef = useRef<HTMLDivElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const roomsRef = useRef<HTMLElement | null>(null);
   const innerRef = useRef<HTMLDivElement | null>(null);
-  /* El resplandor lo escriben dos manos —el puntero y el scroll— y ninguna
-   * puede pisar a la otra, así que las dos leen de aquí. */
-  const glow = useRef({ near: 0, depth: 1 });
+  const glow = useRef({ near: 0 });
 
-  /* `--p`: la posición de scroll en alturas de ventana. Es lo único que la
-   * página lee del recorrido, y lo leen las 336 celdas de la costura.
-   *
-   * Dos cosas lo hacen barato, y las dos importan en la Vega 6 integrada:
-   *
-   * - va **acumulado en rAF**, no por evento: el scroll dispara docenas de
-   *   eventos por frame y aquí sólo interesa el último;
-   * - va **cuantizado** a 1/64 de altura de ventana (~12 px). Cambiar una
-   *   propiedad personalizada del contenedor invalida el estilo de todas las
-   *   celdas que la leen, así que sin cuantizar eso pasaba en cada frame del
-   *   recorrido; así pasa 64 veces en total. Y de paso el corte a saltos es
-   *   el que le toca a una rejilla de píxeles: un desvanecido continuo aquí
-   *   se lee como una máscara de degradado, no como celdas apagándose. */
+  // Efecto pixel: alternar bit de celda al hacer clic y recalcular vecindad
+  const handleCellClick = (idx: number) => {
+    setRoomsGrid((prev) => {
+      const next = [...prev];
+      const r = Math.floor(idx / COLS);
+      const c = idx % COLS;
+      const newLight = !next[idx].light;
+      
+      // Actualizar celda pulsada
+      next[idx] = { ...next[idx], light: newLight };
+
+      // Recalcular vecindad de la celda y sus 8 vecinos
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          const nr = r + dr;
+          const nc = c + dc;
+          if (nr >= 0 && nr < ROOMS_ROWS && nc >= 0 && nc < COLS) {
+            const nIdx = nr * COLS + nc;
+            if (next[nIdx].light) {
+              let count = 0;
+              for (let ddr = -1; ddr <= 1; ddr++) {
+                for (let ddc = -1; ddc <= 1; ddc++) {
+                  if (ddr === 0 && ddc === 0) continue;
+                  const nnr = nr + ddr;
+                  const nnc = nc + ddc;
+                  if (nnc < 0 || nnc >= COLS || nnr < 0 || nnr >= ROOMS_ROWS) {
+                    count++;
+                  } else if (!next[nnr * COLS + nnc].light) {
+                    count++;
+                  }
+                }
+              }
+              next[nIdx] = { ...next[nIdx], n: count };
+            }
+          }
+        }
+      }
+      return next;
+    });
+  };
+
   useEffect(() => {
     const el = rootRef.current;
     if (!el) return;
@@ -350,12 +548,6 @@ export default function LandingPage({ onExplore }: LandingPageProps) {
       if (q === last) return;
       last = q;
       el.style.setProperty("--p", String(q));
-      /* Pasada la portada el resplandor sobra: `screen` sobre el oscuro del
-         índice deja una mancha azul encima de las placas. Se apaga entre 0,35
-         y 0,85 alturas de ventana. */
-      glow.current.depth = Math.max(0, Math.min(1, (0.85 - q) / 0.5));
-      const g = glowRef.current;
-      if (g) g.style.opacity = String(glow.current.near * glow.current.depth);
     };
     const onScroll = () => {
       if (!raf) raf = requestAnimationFrame(apply);
@@ -368,11 +560,6 @@ export default function LandingPage({ onExplore }: LandingPageProps) {
     };
   }, []);
 
-  /* La llegada del índice. Un solo observador sobre el cuerpo entero —cabecera
-   * y placas— y se desconecta al primer disparo: esto pasa una vez, no cada
-   * vez que se cruza el borde. El `rootMargin` negativo por abajo es lo que
-   * evita que la secuencia se gaste en la última franja de la pantalla, donde
-   * nadie la está mirando todavía. */
   useEffect(() => {
     const el = innerRef.current;
     if (!el) return;
@@ -392,17 +579,13 @@ export default function LandingPage({ onExplore }: LandingPageProps) {
     roomsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  /* El resplandor sigue al puntero con `mix-blend-mode: screen`: sobre el
-   * oscuro suma luz azul y sobre el claro no se nota, que es exactamente lo
-   * que hace la referencia. Va por `ref` y no por estado para no rehacer las
-   * 1.440 celdas en cada `mousemove`. */
   useEffect(() => {
     const move = (e: PointerEvent) => {
       const g = glowRef.current;
       if (!g) return;
       g.style.transform = `translate(${e.clientX}px, ${e.clientY}px)`;
       glow.current.near = 1;
-      g.style.opacity = String(glow.current.depth);
+      g.style.opacity = "1";
     };
     const leave = () => {
       glow.current.near = 0;
@@ -423,6 +606,7 @@ export default function LandingPage({ onExplore }: LandingPageProps) {
 
   return (
     <div ref={rootRef} className={`landing-overlay ${transitioning ? "transitioning" : ""}`}>
+      {/* Rejilla de píxeles de la portada */}
       <div
         className="landing-grid-bg"
         style={{
@@ -442,7 +626,6 @@ export default function LandingPage({ onExplore }: LandingPageProps) {
       <div className="landing-overlay-ui">
         <a className="landing-brand" href="#" onClick={(e) => { e.preventDefault(); handleExploreClick(); }}>
           <svg className="landing-brand-mark" viewBox="0 0 16 16" aria-hidden="true">
-            {/* Marca de píxeles: la misma rejilla de la portada, en pequeño. */}
             <path
               fill="currentColor"
               d="M0 2h5v3H2v3H0V2zm11 0h5v6h-2V5h-3V2zM2 8h3v3H2V8zm9 0h3v3h-3V8zM5 5h6v3H5V5zm0 6h6v3H5v-3zm2 3h2v2H7v-2z"
@@ -456,7 +639,7 @@ export default function LandingPage({ onExplore }: LandingPageProps) {
         </a>
 
         <nav className="landing-nav">
-          <a href="/galaxia" className="landing-nav-item" onClick={(e) => { e.preventDefault(); handleExploreClick(); }}>
+          <a href="/embedding-nebula" className="landing-nav-item" onClick={(e) => { e.preventDefault(); handleExploreClick(); }}>
             Enter
           </a>
           <a
@@ -485,20 +668,6 @@ export default function LandingPage({ onExplore }: LandingPageProps) {
           gravity.
         </h1>
 
-        {/* Guiño al aprendizaje profundo, en el hueco oscuro de abajo a la
-            izquierda —el único rincón grande que la silueta deja vacío, y el
-            que equilibra la nota de la esquina opuesta.
-
-            El 0,72 **no es decorativo**: es el coseno real entre `king − man
-            + woman` y `queen`, calculado sobre el mismo `vecs.bin` que
-            publica el sitio (0,7158 exacto, int8 con escala por vector). La
-            regla del proyecto es que toda afirmación se calcula en 300D, y
-            una portada no está exenta: si alguien cambia el modelo o el
-            recorte de vocabulario, este número hay que volver a medirlo.
-
-            Que la analogía salga es justamente lo que hace el guiño: nadie
-            programó esa resta. La red la dejó ahí al aprender a predecir
-            contextos. */}
         <div className="landing-ml">
           <p className="landing-ml-tag">Deep learning, made navigable</p>
           <p className="landing-ml-eq">king − man + woman ≈ queen</p>
@@ -512,11 +681,10 @@ export default function LandingPage({ onExplore }: LandingPageProps) {
             50,000 words placed by simulating physical forces on their
             nearest-neighbor graph, not by dimension reduction.
           </p>
-          {/* Requisito de licencia: la atribución a fastText no se esconde. */}
           <p className="landing-attrib">fastText Crawl Vectors · CC BY-SA 3.0</p>
         </div>
 
-        <button className="landing-scroll-indicator" onClick={goToRooms}>
+        <button className="landing-scroll-indicator" onClick={goToRooms} aria-label="Scroll down to rooms">
           <span>Scroll</span>
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M12 5v14M19 12l-7 7-7-7" />
@@ -525,14 +693,10 @@ export default function LandingPage({ onExplore }: LandingPageProps) {
       </div>
 
       {/* ---------------------------------------------------------------
-          El índice de salas. Mismo material que la portada: masa plana, celda
-          cuadrada, dígitos de buscaminas y **cero radio de borde**. La placa
-          de una sala abierta no se ilumina al pasar por encima: **se
-          invierte**, como una celda de la rejilla que cambia de bit. Es el
-          único gesto de hover que la portada ya tenía a mano y el que dice de
-          qué está hecha la página.
+          EL ÍNDICE DE SALAS: MISMO MATERIAL, MINIMALISMO Y CUADRADOS
           --------------------------------------------------------------- */}
       <section className="landing-rooms" ref={roomsRef}>
+        {/* Costura de erosión continua */}
         {([["landing-seam", SEAM_CELLS], ["landing-seam-flat", SEAM_FLAT_CELLS]] as const).map(
           ([cls, cells]) => (
             <div
@@ -554,73 +718,106 @@ export default function LandingPage({ onExplore }: LandingPageProps) {
           ),
         )}
 
+        {/* Rejilla de cuadrados interactiva en el fondo de las salas */}
+        <div
+          className="landing-rooms-grid-bg"
+          style={{
+            gridTemplateColumns: `repeat(${COLS}, 1fr)`,
+            gridTemplateRows: `repeat(${ROOMS_ROWS}, 1fr)`,
+          }}
+          aria-hidden="true"
+        >
+          {roomsGrid.map((cell, idx) => (
+            <div
+              key={idx}
+              className={`gcell ${cell.light ? "gcell-l" : "gcell-d"} gcell-interactive`}
+              onClick={() => handleCellClick(idx)}
+            >
+              {cell.n > 0 && <span className="gnum">{cell.n}</span>}
+            </div>
+          ))}
+        </div>
+
         <div className="landing-rooms-inner" ref={innerRef}>
           <header className="landing-rooms-head">
-            <p className="landing-rooms-tag">
-              <span>Index</span>
-              <span className="landing-rooms-rule" />
-              <span>03 rooms · 02 open</span>
-            </p>
-            <h2 className="landing-rooms-title">
-              algorithms you can
-              <br />
-              walk through.
-            </h2>
-            <p className="landing-rooms-lead">
-              Each room turns one idea out of machine learning into a place instead of a
-              diagram. Nothing here is pre-rendered: the forces, the vectors and the
-              descent all run on your own GPU while you look at them.
-            </p>
+            <div className="landing-rooms-head-main">
+              <h2 className="landing-rooms-title">
+                algorithms you can
+                <br />
+                walk through.
+              </h2>
+              <p className="landing-rooms-lead">
+                Each room turns one idea out of machine learning into a place instead of a
+                diagram. Nothing here is pre-rendered: the forces, the vectors and the
+                descent all run on your own GPU while you look at them.
+              </p>
+            </div>
+
+            <div className="landing-pipeline-plate" aria-hidden="true">
+              <img
+                src="/pipeline-architecture.png"
+                alt="Tensor Decomposition & 3D Latent Projections"
+                className="pipeline-image"
+                loading="lazy"
+              />
+            </div>
           </header>
 
           <ol className="landing-room-list" role="list">
             {ROOMS.map((room) => {
-              const open = Boolean(room.href);
+              const isHovered = hoveredRoom === room.id;
               const inner = (
                 <>
                   <div className="landing-room-top">
                     <span className="landing-room-id">{room.id}</span>
                     <span className="landing-room-status">
-                      <i className={open ? "dot-on" : undefined} />
+                      <i className="dot-on" />
                       {room.status}
                     </span>
                   </div>
-                  <Glyph name={room.glyph} />
-                  <h3 className="landing-room-title">{room.title}</h3>
+                  {room.previewImg && (
+                    <div className="landing-room-thumb-wrap">
+                      <img
+                        src={room.previewImg}
+                        alt={room.previewAlt || room.title}
+                        className="landing-room-thumb"
+                        loading="lazy"
+                      />
+                    </div>
+                  )}
+                  <div className="landing-room-heading">
+                    <RoomGlyph name={room.glyph} isHovered={isHovered} />
+                    <h3 className="landing-room-title">{room.title}</h3>
+                  </div>
                   <p className="landing-room-desc">{room.desc}</p>
                   <div className="landing-room-action">
-                    {open ? (
-                      <>
-                        <span>{room.action}</span>
-                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none"
-                             stroke="currentColor" strokeWidth="2">
-                          <path d="M5 12h14M12 5l7 7-7 7" />
-                        </svg>
-                      </>
-                    ) : (
-                      <span>Phase 03 · not open yet</span>
-                    )}
+                    <span>{room.action}</span>
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none"
+                         stroke="currentColor" strokeWidth="2">
+                      <path d="M5 12h14M12 5l7 7-7 7" />
+                    </svg>
                   </div>
                 </>
               );
 
               return (
                 <li key={room.id}>
-                  {open ? (
-                    <a
-                      className="landing-room"
-                      href={room.href}
-                      onClick={
-                        room.intercept
-                          ? (e) => { e.preventDefault(); handleExploreClick(); }
-                          : undefined
-                      }
-                    >
-                      {inner}
-                    </a>
-                  ) : (
-                    <div className="landing-room landing-room-shut">{inner}</div>
-                  )}
+                  <a
+                    className="landing-room"
+                    href={room.href}
+                    onMouseEnter={() => setHoveredRoom(room.id)}
+                    onMouseLeave={() => setHoveredRoom(null)}
+                    onClick={
+                      room.intercept
+                        ? (e) => {
+                            e.preventDefault();
+                            handleExploreClick();
+                          }
+                        : undefined
+                    }
+                  >
+                    {inner}
+                  </a>
                 </li>
               );
             })}
@@ -646,3 +843,5 @@ export default function LandingPage({ onExplore }: LandingPageProps) {
     </div>
   );
 }
+
+

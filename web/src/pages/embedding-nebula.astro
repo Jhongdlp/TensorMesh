@@ -1,21 +1,39 @@
 ---
-return Astro.redirect("/embedding-nebula", 301);
+import GalaxyView from "../components/Galaxy.tsx";
 ---
 
 <html lang="es">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="refresh" content="0;url=/embedding-nebula" />
-    <link rel="canonical" href="/embedding-nebula" />
-    <title>Redirecting to Embedding Nebula...</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Embedding Nebula · Atlas Vectorial</title>
+    <meta
+      name="description"
+      content="Galaxia navegable de embeddings: 50.000 palabras por idioma, colocadas por simulación de fuerzas sobre su grafo de vecinos más cercanos."
+    />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Space+Grotesk:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap"
+    />
+
     <script is:inline>
-      window.location.replace("/embedding-nebula" + window.location.search);
+      (function () {
+        var params = new URLSearchParams(location.search);
+        var q = params.get("lang");
+        var lang = q === "en" || q === "es" ? q : "es";
+        var out = {};
+        ["meta.json", "positions.bin", "edges.bin", "labels.bin", "attrs.bin"]
+          .forEach(function (f) {
+            var url = "/data/" + lang + "/" + f;
+            out[url] = fetch(url).catch(function () { return null; });
+          });
+        window.__atlas = out;
+      })();
     </script>
   </head>
   <body>
-    <p>Redirecting to <a href="/embedding-nebula">Embedding Nebula</a>...</p>
-  </body>
-</html>
+    <GalaxyView client:only="react" lang="es" initialView="app" />
 
     <noscript>
       <p class="ns">La galaxia necesita JavaScript y WebGL para dibujarse.</p>

@@ -29,6 +29,7 @@ struct SOut {
   @location(1)       hw   : f32,    // altura de mundo, para las curvas de nivel
   @location(2)       wxz  : vec2f,  // planta, para las dianas de los mínimos
   @location(3)       fog  : f32,
+  @location(4)       uv   : vec2f,  // coordenadas de malla normalizadas (0..1)
 };
 
 /** Rampa de pérdida: azul profundo en el suelo, ámbar en la cima.
@@ -87,14 +88,12 @@ fn vsSurface(@builtin(vertex_index) vi: u32) -> SOut {
   let lam = max(dot(nrm, normalize(M.light.xyz)), 0.0);
   // Suelo ambiental generoso: en la parte plana la normal apunta arriba y sin
   // ambiente el fondo del valle quedaría negro, justo donde está la acción.
-  let lit = 0.34 + 0.66 * lam;
-  // 0,70 y no 0,62: con la vertical aplanada y las curvas de nivel encima, el
-  // relieve dejó de competir con los caminantes por ser lo más brillante de la
-  // escena, así que puede permitirse verse.
-  o.rgb = lossRamp(t) * lit * 0.70;
+  let lit = 0.38 + 0.62 * lam;
+  o.rgb = lossRamp(t) * lit * 0.76;
   o.hw  = w.y;
   o.wxz = w.xz;
   o.fog = clamp((o.clip.w - M.fogNear) / max(M.fogSpan, 1e-4), 0.0, 1.0);
+  o.uv  = vec2f(gx, gy);
   return o;
 }
 
@@ -112,52 +111,39 @@ fn band(u: f32, px: f32) -> f32 {
 fn fsSurface(v: SOut) -> @location(0) vec4f {
   var o = v.rgb;
 
+  // ---------------------------------------------------------- cuadrícula ortogonal de la malla
+  // Sutil y limpia para evitar patrones de moiré en superficies periódicas:
+  let gridU = band(v.uv.x * 20.0, 1.0) * 0.08;
+  let gridV = band(v.uv.y * 20.0, 1.0) * 0.08;
+  let wire = max(gridU, gridV);
+  o += (v.rgb * 1.2 + vec3f(0.10, 0.14, 0.22)) * wire;
+
   // ---------------------------------------------------------- curvas de nivel
-  // Es la pieza que le faltaba a la sala. La malla sombreada dice dónde hay
-  // pendiente pero no **cuánta**, así que el relieve se leía como una tela
-  // marrón: bonita y muda. Las curvas de nivel lo dicen sin gastar una palabra
-  // —se apiñan donde cae rápido y se separan donde el valle es plano— y son
-  // además el dibujo que cualquiera ya sabe leer de un mapa.
-  //
-  // Van sobre la altura de **mundo**, que es la pérdida en logaritmo: cada
-  // curva es un escalón igual de log-pérdida. En lineal, Beale tendría todas
-  // sus curvas apretadas contra una esquina y ninguna en el resto del dominio.
+  // Escalones de la pérdida en logaritmo:
   let span = max(M.hHi - M.hLo, 1e-4);
   let u = (v.hw - M.hLo) / span;
-  let minor = band(u * 40.0, 1.0) * 0.085;
-  let major = band(u *  8.0, 1.15) * 0.26;
-  // La línea toma el color de su propia altura, aclarado: una retícula gris
-  // encima de una rampa de color se lee como suciedad, y una blanca pura pisa
-  // el sitio de los caminantes, que son lo único blanco de la escena.
-  o += (v.rgb * 1.6 + vec3f(0.10, 0.12, 0.16)) * (minor + major);
+  let minor = band(u * 36.0, 1.0) * 0.08;
+  let major = band(u *  6.0, 1.15) * 0.24;
+  o += (v.rgb * 1.6 + vec3f(0.10, 0.14, 0.20)) * (minor + major);
 
   // ------------------------------------------------------------ los mínimos
-  // Una diana donde está el fondo. Sin ella «descender» no tiene a dónde: se
-  // veía bajar a la nube sin saber si el sitio al que llegaba era *el* sitio.
-  // En Himmelblau son cuatro del mismo valor y ahí la diana es el contenido
-  // entero; en la silla la lista va vacía, y que no haya diana es la respuesta.
-  //
-  // La ranura vacía se apaga **multiplicando por `m.z`** y no con un `continue`:
-  // `fwidth` es una derivada y WGSL sólo la admite bajo control de flujo
-  // uniforme. Aquí lo es —`M` es un uniforme—, pero el análisis de uniformidad
-  // no tiene por qué convencerse, y un salto de esos no compila en algunos
-  // backends. Cuatro iteraciones sin rama salen más baratas que la discusión.
+  // Una diana luminosa donde está el fondo con núcleo sólido:
   var ring = 0.0;
+  var core = 0.0;
   for (var i = 0u; i < 4u; i++) {
     let m = M.mins[i];
     let d = length(v.wxz - m.xy);
-    // El grosor se clava en pantalla igual que en las curvas, pero con tope:
-    // en las paredes casi verticales del logaritmo la derivada se dispara y
-    // sin el tope la diana se convierte en un borrón del tamaño del valle.
     let e = clamp(fwidth(d) * 1.4, 1e-4, 0.02);
     let a = 1.0 - smoothstep(0.0, e, abs(d - 0.075));
-    let b = (1.0 - smoothstep(0.0, e, abs(d - 0.135))) * 0.55;
+    let b = (1.0 - smoothstep(0.0, e, abs(d - 0.135))) * 0.65;
+    let c = (1.0 - smoothstep(0.0, 0.040, d)) * 0.95;
     ring += (a + b) * m.z;
+    core += c * m.z;
   }
-  o += vec3f(0.85, 0.92, 1.0) * clamp(ring, 0.0, 1.0) * 0.55;
+  o += vec3f(0.85, 0.95, 1.0) * clamp(ring, 0.0, 1.0) * 0.65;
+  o += vec3f(0.15, 0.92, 1.0) * clamp(core, 0.0, 1.0) * 0.95;
 
-  // Perspectiva aérea, el mismo argumento que en el atlas: sin ella el relieve
-  // se lee como un cartel plano y no como un cuerpo con fondo.
+  // Perspectiva aérea
   o = mix(o, vec3f(0.012, 0.016, 0.030), v.fog * 0.55);
   return vec4f(o, 1.0);
 }

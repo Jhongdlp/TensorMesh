@@ -168,42 +168,23 @@ fn vsHead(@builtin(vertex_index) vi: u32,
 fn fsHead(v: VOut) -> @location(0) vec4f {
   let r2 = dot(v.uv, v.uv);
   if (r2 > 1.0) { discard; }
-  // Normal de esfera reconstruida del propio quad. No hay geometría: el disco
-  // *finge* volumen, y con eso basta — es lo que separa «una bolita rodando»
-  // de «un punto de color», que era todo el problema.
   let z = sqrt(max(1.0 - r2, 0.0));
   let n = vec3f(v.uv, z);
-  let L = normalize(vec3f(-0.42, 0.52, 0.74));
+  let L = normalize(vec3f(-0.35, 0.70, 0.62));
   let lam = max(dot(n, L), 0.0);
-  // Brillo especular pequeño y duro: es el único detalle que dice «esfera» a
-  // cuatro píxeles de radio. Sin él, la iluminación difusa sola se lee como un
-  // degradado y la bolita vuelve a ser una mancha.
-  let spec = pow(max(dot(reflect(-L, n), vec3f(0.0, 0.0, 1.0)), 0.0), 24.0);
-  // Y un filo en el contorno, que la despega del relieve cuando el fondo tiene
-  // por casualidad el mismo tono.
-  let rim = pow(1.0 - z, 3.0) * 0.45;
-
-  var c = v.rgb * (0.26 + 0.88 * lam) + v.rgb * rim + vec3f(1.0) * spec * 0.6;
-  c = mix(c, c * 0.42, v.fade);
-
+  let spec = pow(max(dot(reflect(-L, n), vec3f(0.0, 0.0, 1.0)), 0.0), 20.0);
+  let rim = pow(1.0 - z, 3.0) * 0.40;
   let r = sqrt(r2);
+
+  var c = v.rgb * (0.30 + 0.85 * lam) + v.rgb * rim + vec3f(1.0) * spec * 0.45;
+  c = mix(c, c * 0.40, v.fade);
+
   let aa = max(fwidth(r), 0.0001);
   let a = 1.0 - smoothstep(1.0 - aa * 2.0, 1.0, r);
-  return vec4f(c, a * mix(1.0, 0.55, v.fade));
+  return vec4f(c, a * mix(1.0, 0.60, v.fade));
 }
 
 // ------------------------------------------------- el camino de los cinco
-//
-// Los mismos quads, pero leyendo del anillo en vez del estado: una cuenta por
-// posición guardada. **Puntos sueltos y no una línea**, y no es por comodidad:
-// el descenso es discreto —mira la pendiente, da un paso, repite— y una línea
-// continua cuenta otra cosa. Además una línea en WebGPU mide un píxel y punto,
-// mientras que un quad se puede engordar, apagar por edad y dejar en la
-// distancia el mismo tamaño mínimo que todo lo demás.
-//
-// El orden importa: el vértice `j` lee la ranura `head + 1 + j`, o sea del más
-// **viejo** al más nuevo. Así la edad es una rampa limpia y no hay costura por
-// donde el anillo da la vuelta.
 
 @group(0) @binding(3) var<storage, read> path : array<vec2f>;
 
@@ -216,17 +197,14 @@ fn vsTrace(@builtin(vertex_index) vi: u32,
   let slot = (u32(U.pathHead) + 1u + j) % len;
 
   var wp = worldOf(path[w * len + slot]);
-  wp.y = wp.y + U.lift;
+  wp.y = wp.y + U.lift * 1.1;
   var clip = U.viewProj * vec4f(wp, 1.0);
 
-  // 0 el rastro más viejo, 1 el que acaba de dejar la canica. El tamaño y la
-  // luz suben con la edad, así que el camino **apunta**: se ve de dónde viene y
-  // hacia dónde va sin una sola flecha.
   let age = f32(j) / f32(max(len - 1u, 1u));
-  let rw = tint[w].w * (0.13 + 0.26 * age);
+  let rw = tint[w].w * (0.08 + 0.18 * age);
   var ox = rw * U.projXX;
   var oy = rw * U.projYY;
-  let floorClip = U.minPx * 1.1 * 2.0 * clip.w;
+  let floorClip = U.minPx * 0.9 * 2.0 * clip.w;
   ox = max(ox, floorClip / U.vpX);
   oy = max(oy, floorClip / U.vpY);
 
@@ -234,7 +212,7 @@ fn vsTrace(@builtin(vertex_index) vi: u32,
   var o: VOut;
   o.clip = vec4f(clip.x + corner.x * ox, clip.y + corner.y * oy, clip.z, clip.w);
   o.rgb  = colourOf(w, wp.y);
-  o.fade = (0.10 + 0.80 * age * age) * mix(1.0, 0.4, fogT(clip.w));
+  o.fade = (0.05 + 0.95 * age * age) * mix(1.0, 0.40, fogT(clip.w));
   o.uv   = corner;
   return o;
 }
@@ -245,6 +223,6 @@ fn fsTrace(v: VOut) -> @location(0) vec4f {
   if (r > 1.0) { discard; }
   let aa = max(fwidth(r), 0.0001);
   let edge = 1.0 - smoothstep(1.0 - aa * 2.0, 1.0, r);
-  let core = exp(-r * r * 1.8);
-  return vec4f(v.rgb, edge * (0.25 + 0.75 * core) * v.fade);
+  let core = exp(-r * r * 2.2);
+  return vec4f(v.rgb, edge * (0.20 + 0.80 * core) * v.fade);
 }

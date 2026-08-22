@@ -3,6 +3,8 @@ import { DescentEngine, gpuAvailable, DEFAULTS, TOTAL_STEPS, type Options } from
 import { SURFACES, OPTS, OPT_NAMES, N_MAX } from "./field.mjs";
 import { typing } from "../../galaxy/keys.mjs";
 import { rampCss } from "../../galaxy/palette.mjs";
+import DescentWelcome, { descentIntroPending } from "./DescentWelcome";
+import DescentGuide from "./DescentGuide";
 import {
   IcoChevron, IcoFit, IcoExpand, IcoShrink, IcoHelp,
   IcoPlay, IcoPause, IcoStep, IcoDrop, IcoPlan,
@@ -49,6 +51,9 @@ export default function Descent() {
   const [legend, setLegend] = useState(false);
   const [notes, setNotes] = useState(false);
   const [cardOpen, setCardOpen] = useState(true);
+  const [intro, setIntro] = useState(() => descentIntroPending());
+  const [guide, setGuide] = useState(false);
+  const [guideChapter, setGuideChapter] = useState(0);
 
   useEffect(() => {
     let dead = false;
@@ -128,6 +133,7 @@ export default function Descent() {
   // en `keys.mjs` justamente para que las dos salas lo compartan.
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
+      if (intro || guide) return;
       if (e.ctrlKey || e.metaKey || e.altKey || typing(e.target)) return;
       const eng = engineRef.current;
       switch (e.code) {
@@ -147,11 +153,15 @@ export default function Descent() {
           e.preventDefault();
           patch({ plan: !eng.opts.plan });
           break;
+        case "Slash":
+          e.preventDefault();
+          setGuide(g => !g);
+          break;
       }
     };
     addEventListener("keydown", down);
     return () => removeEventListener("keydown", down);
-  }, [patch, reseed, stepOnce, toggleZen, zen]);
+  }, [patch, reseed, stepOnce, toggleZen, zen, intro, guide]);
 
   const surf = SURFACES[o.surface];
   const base = surf.opt[OPTS[o.opt]].lr;
@@ -231,10 +241,10 @@ export default function Descent() {
                     title="pantalla completa · F">
               {zen ? <IcoShrink /> : <IcoExpand />}
             </button>
-            <button className={"tool" + (notes ? " on" : "")}
-                    onClick={() => { setNotes(n => !n); setCardOpen(true); }}
-                    aria-pressed={notes} aria-label="cómo leer esto"
-                    title="cómo leer esto">
+            <button className={"tool" + (guide ? " on" : "")}
+                    onClick={() => setGuide(g => !g)}
+                    aria-pressed={guide} aria-label="guía del descenso"
+                    title="guía del descenso · ?">
               <IcoHelp />
             </button>
           </div>
@@ -247,6 +257,14 @@ export default function Descent() {
               </svg>
               <span>Volver a Inicio</span>
             </a>
+
+            <button className="guide-btn" onClick={() => { setGuideChapter(0); setGuide(true); }}>
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01" />
+              </svg>
+              <span>Guía del Descenso</span>
+            </button>
 
             <p className="eyebrow">Superficie</p>
             <div className="ctl-row ctl-col" role="group" aria-label="superficie">
@@ -280,6 +298,35 @@ export default function Descent() {
               <button className={!o.heat ? "on" : ""} aria-pressed={!o.heat}
                       onClick={() => patch({ heat: false })}>Origen</button>
             </div>
+            <p className="eyebrow">Velocidad del Descenso</p>
+            <div className="ctl-row" role="group" aria-label="velocidad del descenso">
+              {[1, 2, 4, 8].map(s => (
+                <button
+                  key={s}
+                  className={(o.speed || 4) === s ? "on" : ""}
+                  onClick={() => patch({ speed: s })}
+                >
+                  {s}×
+                </button>
+              ))}
+            </div>
+
+            <button
+              className="guide-btn"
+              style={{
+                marginTop: "0.6rem",
+                background: "rgba(0, 240, 255, 0.12)",
+                border: "1px solid rgba(0, 240, 255, 0.4)",
+                color: "#00f0ff",
+              }}
+              onClick={() => engineRef.current?.dropProbe()}
+            >
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 8v8M8 12h8" />
+              </svg>
+              <span>Soltar Sonda Exploradora</span>
+            </button>
 
             <hr className="side-sep" />
 
@@ -300,19 +347,13 @@ export default function Descent() {
                 Estela
                 <b>{o.keep >= 0.9995 ? "permanente" : `${(1 / (1 - o.keep)) | 0} frames`}</b>
               </span>
-              {/* Hasta 1: en «permanente» la estela deja de ser un campo de flujo
-                  y se vuelve una exposición larga de la corrida entera, que es la
-                  única forma de que comparar dos optimizadores diga algo — a mil
-                  pasos los tres están ya quietos en el mismo sitio. */}
               <input id="keep" type="range" min={0.86} max={1} step={0.005} value={o.keep}
                      onChange={e => patch({ keep: Number(e.target.value) })} />
             </label>
 
             <hr className="side-sep" />
 
-            {/* La leyenda. Va plegada porque no hace falta para el primer
-                minuto, y a la vista de un clic porque sin ella el color del
-                relieve y el de la bolita son dos codificaciones mudas. */}
+            {/* La leyenda. */}
             <button className={"cmp-tab" + (legend ? " on" : "")}
                     onClick={() => setLegend(l => !l)} aria-expanded={legend}>
               <span className="cmp-tab-w">Qué dice el color</span>
@@ -354,14 +395,20 @@ export default function Descent() {
         <div className="rail rail-r">
           <div className="hud">
             <div className="ctl-head">
-              <span className="eyebrow">{o.running ? "Descendiendo" : "En pausa"}</span>
+              <span className="eyebrow">
+                {hud.done
+                  ? "Asentado en el mínimo"
+                  : o.running
+                  ? hud.steps < 120
+                    ? "Descendiendo a gran velocidad"
+                    : hud.steps < 3000
+                    ? "Explorando la cuenca"
+                    : "Afinando convergencia"
+                  : "En pausa"}
+              </span>
               <span className="fps">{hud.fps.toFixed(0)} fps{hud.res < 0.999 ? ` · ${(hud.res * 100).toFixed(0)}% res` : ""}</span>
             </div>
-            {/* El progreso como barra y no como un contador suelto. «1.472
-                pasos» no dice nada sin saber que la corrida son 6.000; la barra
-                lo dice sin escribirlo, y además enseña los dos tiempos de estas
-                funciones: se llena despacio al principio —un paso por frame— y
-                de golpe después. */}
+            {/* El progreso como barra y no como un contador suelto. */}
             <div className="bar" role="progressbar" aria-valuenow={Math.round(done * 100)}
                  aria-valuemin={0} aria-valuemax={100} aria-label="progreso de la corrida">
               <i style={{ width: `${done * 100}%` }} />
@@ -388,6 +435,28 @@ export default function Descent() {
             <p className="formula">f(x, y) = {surf.formula}</p>
             <div className="card-body">
               <p className="note">{surf.note}</p>
+              {surf.min.length > 0 ? (
+                <p className="note" style={{ color: "#73dbff", borderColor: "rgba(115, 219, 255, 0.25)", display: "flex", gap: "0.45rem", alignItems: "flex-start" }}>
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, marginTop: "2px" }} aria-hidden="true">
+                    <circle cx="12" cy="12" r="10" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                  <span>
+                    <b>Blanco del Descenso:</b> {surf.min.length === 1
+                      ? `Mínimo global en (${surf.min[0][0]}, ${surf.min[0][1]}) con f = 0`
+                      : `4 mínimos globales idénticos con f = 0`}
+                  </span>
+                </p>
+              ) : (
+                <p className="note" style={{ color: "#ffc75c", borderColor: "rgba(255, 199, 92, 0.25)", display: "flex", gap: "0.45rem", alignItems: "flex-start" }}>
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, marginTop: "2px" }} aria-hidden="true">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4M12 17h.01" />
+                  </svg>
+                  <span>
+                    <b>Sin mínimo:</b> Punto de ensilladura en (0, 0). Las partículas escapan por los lados hacia el infinito.
+                  </span>
+                </p>
+              )}
               {notes && (
                 <>
                   <p className="kicker rule">Cómo leer esto</p>
@@ -414,8 +483,18 @@ export default function Descent() {
                   )}
                 </>
               )}
-              <p className="foot phase">
-                Fase 01 · cinco superficies · descenso, momento y Adam
+              <p className="foot phase" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span>Fase 01 · cinco superficies</span>
+                <button
+                  className="card-guide-btn"
+                  onClick={() => { setGuideChapter(3); setGuide(true); }}
+                >
+                  <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01" />
+                  </svg>
+                  <span>¿Por qué? Guía</span>
+                </button>
               </p>
             </div>
           </aside>
@@ -448,6 +527,21 @@ export default function Descent() {
           <span>salir</span>
           <kbd>esc</kbd>
         </button>
+      )}
+
+      {/* ------------------------------------------------ Modales pedagógicos */}
+      {intro && (
+        <DescentWelcome
+          onClose={() => setIntro(false)}
+          onOpenGuide={() => { setGuideChapter(0); setGuide(true); }}
+        />
+      )}
+
+      {guide && (
+        <DescentGuide
+          initialChapter={guideChapter}
+          onClose={() => setGuide(false)}
+        />
       )}
     </div>
   );

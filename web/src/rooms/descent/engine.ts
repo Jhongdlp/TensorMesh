@@ -48,9 +48,7 @@ const TRAIL: GPUTextureFormat = "rgba16float";
 const WALKER_SIZE = 0.009;
 const HEAD_SCALE = 2.4;
 const MIN_PX = 1.35;
-/** Cuánto se levanta el caminante sobre el relieve. Sin esto, punto y malla
- *  ocupan la misma profundidad y la prueba `less` los borra a medias: aparecen
- *  y desaparecen según el ángulo. */
+/** Cuánto se levanta el caminante sobre el relieve. */
 const LIFT = 0.012;
 const MESH_RES = 192;
 
@@ -113,6 +111,8 @@ export interface Options {
    *  una decisión. Arranca en `true` porque es la que se entiende sin leer
    *  nada: la primera vez, lo que hay que ver es que la nube baja. */
   heat: boolean;
+  /** Velocidad de simulación en pasos por frame (1, 2, 4, 8, 16). */
+  speed?: number;
   /** Dibujar el camino de los cinco seguidos. Se puede apagar —el enjambre
    *  solo también dice algo— pero arranca encendido: es lo único de la sala
    *  que enseña la **mecánica** y no sólo el resultado. */
@@ -122,6 +122,7 @@ export interface Options {
 export const DEFAULTS: Options = {
   surface: 0, opt: 1, lr: 0, n: N_DEFAULT, keep: KEEP_REF,
   running: true, plan: false, adaptive: true, heat: true, trace: true,
+  speed: 4,
 };
 
 export interface Stats {
@@ -532,6 +533,36 @@ export class DescentEngine {
     this.dirty = true;
   }
 
+  /** Suelta una sonda de 5 caminantes en una coordenada concreta del dominio o al azar */
+  dropProbe(targetX?: number, targetY?: number) {
+    const surf = SURFACES[this.opts.surface];
+    const [x0, x1, y0, y1] = surf.dom;
+    const cx = targetX ?? (x0 + (x1 - x0) * (0.2 + Math.random() * 0.6));
+    const cy = targetY ?? (y0 + (y1 - y0) * (0.2 + Math.random() * 0.6));
+    const stData = new Float32Array(TRACED * 2);
+    const seedPath = new Float32Array(TRACED * PATH_LEN * 2);
+    for (let i = 0; i < TRACED; i++) {
+      const ang = (i / TRACED) * Math.PI * 2;
+      const r = (x1 - x0) * 0.04;
+      const px = Math.max(x0, Math.min(x1, cx + Math.cos(ang) * r));
+      const py = Math.max(y0, Math.min(y1, cy + Math.sin(ang) * r));
+      stData[i * 2] = px;
+      stData[i * 2 + 1] = py;
+      for (let j = 0; j < PATH_LEN; j++) {
+        seedPath[(i * PATH_LEN + j) * 2] = px;
+        seedPath[(i * PATH_LEN + j) * 2 + 1] = py;
+      }
+    }
+    this.device.queue.writeBuffer(this.st[0], 0, stData);
+    this.device.queue.writeBuffer(this.st[1], 0, stData);
+    this.device.queue.writeBuffer(this.path, 0, seedPath);
+    const zeroAcc = new Float32Array(TRACED * 4);
+    this.device.queue.writeBuffer(this.acc, 0, zeroAcc);
+    this.clearTrail = true;
+    this.pathHead = 0;
+    this.dirty = true;
+  }
+
   goHome() { this.camera.goHome(); this.dirty = true; }
 
   /** Si la cámara ya no está donde la dejó `frame()`. Enciende la píldora de
@@ -692,8 +723,9 @@ export class DescentEngine {
     }
     this.ensureTargets(w, h);
 
+    const currentSpeed = this.opts.speed || 4;
     const rate = this.opts.running
-      ? (this.steps < SLOW_UNTIL ? STEPS_SLOW : STEPS_FAST)
+      ? (this.steps < SLOW_UNTIL ? Math.min(STEPS_SLOW, currentSpeed) : currentSpeed)
       : this.pending;
     const steps = stepping ? Math.min(rate, MAX_STEPS, TOTAL_STEPS - this.steps) : 0;
     this.pending = 0;
@@ -756,7 +788,7 @@ export class DescentEngine {
     mesh.end();
 
     // 2 — estelas
-    const wipe = this.clearTrail;
+    const wipe = this.clearTrail || moving;
     const trail = enc.beginRenderPass({
       colorAttachments: [{
         view: this.trailTex!.createView(),
