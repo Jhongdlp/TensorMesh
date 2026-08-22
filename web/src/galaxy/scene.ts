@@ -11,7 +11,7 @@ import type { CamState } from "./gpu/camera";
 const ATTRACT_YAW = 0.0011;
 
 /** Cuánto crece un nodo resaltado, igual que `selScale` en el motor WebGPU. */
-const SEL_SCALE = 2.5;
+const SEL_SCALE = 0.0;
 /** Cuánto brilla una arista resaltada. Igual que `selEdge` en el motor WebGPU,
  *  se deduce del brillo de la malla: lleva la arista a color pleno y ni un paso
  *  más, porque pasarse recorta los tres canales y el camino sale blanco. */
@@ -645,7 +645,7 @@ export class GalaxyScene {
   private flyLerp() {
     const t = this.flyTarget;
     if (!t) return;
-    const k = 0.14;
+    const k = 0.08;
     this.target.lerp(t, k);
     this.distance += (this.flyDistance - this.distance) * k;
     if (this.target.distanceTo(t) < this.flyDistance * 0.004 &&

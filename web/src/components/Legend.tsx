@@ -110,7 +110,7 @@ export default function Legend({
 /** Regiones: tres manchas que se tocan, que es lo que el color dice. */
 const IcoZones = () => (
   <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
-       strokeWidth={1.5} strokeLinejoin="round" aria-hidden="true">
+       strokeWidth={1.8} strokeLinejoin="round" aria-hidden="true">
     <circle cx="9" cy="9" r="4.4" />
     <circle cx="15.4" cy="11" r="3.4" />
     <circle cx="11" cy="16.4" r="3" />
@@ -119,7 +119,7 @@ const IcoZones = () => (
 
 const Caret = ({ open }: { open: boolean }) => (
   <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
-       strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+       strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <path d={open ? "M14 6l-6 6 6 6" : "M10 6l6 6-6 6"} />
   </svg>
 );

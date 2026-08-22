@@ -10,7 +10,8 @@
     "check": "tsc -p tsconfig.check.json",
     "test:physics": "node test/physics.mjs",
     "test:render": "node test/render.mjs",
-    "test": "npm run check && npm run test:unit && npm run test:physics && npm run test:render",
+    "test:descent": "node test/descent.mjs",
+    "test": "npm run check && npm run test:unit && npm run test:physics && npm run test:render && npm run test:descent",
     "test:unit": "node test/unit.mjs"
   },
   "keywords": [],

@@ -183,7 +183,7 @@ export default function Analogy({
 /** Analogía: dos parejas y la misma flecha entre ellas. */
 const IcoAnalogy = () => (
   <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
-       strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+       strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <circle cx="5" cy="7" r="1.8" />
     <circle cx="5" cy="17" r="1.8" />
     <path d="M8 7h9M8 17h9M14.5 4.6L17.4 7l-2.9 2.4M14.5 14.6L17.4 17l-2.9 2.4" />
@@ -192,7 +192,7 @@ const IcoAnalogy = () => (
 
 const Caret = ({ open }: { open: boolean }) => (
   <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
-       strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+       strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <path d={open ? "M14 6l-6 6 6 6" : "M10 6l6 6-6 6"} />
   </svg>
 );

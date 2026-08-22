@@ -475,6 +475,57 @@ son justo las que se está mirando.
 
 Cualquier cambio de parámetro que deba verse debe llamar a `invalidate()`.
 
+## Segunda sala: `descenso` (fase 00)
+
+`web/src/pages/descenso.astro` + `web/src/rooms/descent/`. Descenso de gradiente
+sobre Rosenbrock con 10.000 caminantes soltados a la vez. Existe para contestar
+una pregunta concreta: **si el armazón del atlas se despega de su dato**. La
+respuesta, medida:
+
+- **Se hereda entero el armazón.** `gpu/camera.ts` y `keys.mjs` entran sin tocar
+  una línea —órbita, rueda, vuelo con teclado e `Inicio` funcionan solos—, y
+  `palette.mjs` colorea los caminantes con la misma rampa de nebulosa.
+- **No se hereda ningún shader.** `physics.wgsl`, `cull.wgsl` y `pick.wgsl` no
+  aplican; tampoco `loader.ts`, el CSR ni el canal de resalte.
+- **Cuesta 0,49 ms de los 15** del presupuesto (10.000 caminantes, 8 pasos por
+  frame). El paso es local y sin vecinos: mucho más barato que LinLog.
+
+Página aparte y no un modo de `index.astro` a propósito: `Galaxy.tsx` habla en
+vocabulario de grafo y no generaliza, un canvas no admite WebGL y WebGPU a la
+vez, y quien viene por el gradiente no debe descargar los 2,1 MB del atlas. **No
+hay enlace desde la portada**: la galería es fase 03, y una sala a medias
+enlazada desde la primera pantalla promete algo que todavía no está.
+
+Tres cosas que no son obvias y que se rompen solas:
+
+- **`field.wgsl` se antepone** a `walkers.wgsl` y a `render.wgsl` al crear los
+  módulos. La función y su gradiente se definen una vez: el paso baja por el
+  gradiente y el vértice necesita la altura, y dos copias dejan al caminante
+  flotando sobre una superficie que no es la que desciende.
+- **Rosenbrock tiene dos tiempos con un factor 400 entre ellos.** El término en
+  y es `200·(y − x²)`, así que en menos de diez pasos todos han caído sobre la
+  parábola; recorrerla hasta (1,1) cuesta cuatro mil. Por eso el motor va a un
+  paso por frame los primeros 40 y a ocho después: a ocho desde el principio, el
+  primer acto dura dos frames y no se ve.
+- **`projXX`/`projYY` salen de la proyección, no de `viewProj`.** Mismo error
+  que ya documenta el atlas: con `viewProj[0]` el caminante cambia de tamaño al
+  orbitar.
+
+```bash
+node test/descent.mjs                       # compila shaders + numpy + PNG
+python3 pipeline/export_descent_fixture.py  # regenera data/fixture/descent/
+```
+
+`test/descent.mjs` escribe `data/descent.png` con tres paneles (0, 40 y 4.000
+pasos). Es media prueba: Chrome en esta máquina cae al respaldo WebGL —donde
+este shader no existe— y en headless apenas corre ocho frames antes de la
+captura, así que el estado convergido **sólo** se puede ver por Dawn.
+
+Lo que la fase 00 deja aprendido para la 01: al converger, los diez mil
+caminantes caben en un punto y el último panel sale casi vacío. **Las estelas no
+son un adorno de la fase 01, son el requisito** para que el estado final diga
+algo.
+
 ## Layouts duplicados (lo que se rompe en silencio)
 
 Tres sitios describen los mismos bytes y **no hay tipo compartido entre ellos**:
@@ -488,9 +539,13 @@ Tres sitios describen los mismos bytes y **no hay tipo compartido entre ellos**:
 | Bind group de cull (7 entradas) | `engine.ts:cullBGL` | `cull.wgsl`, `test/render.mjs:cullBGL` |
 | Uniform de pick (96 B) | `engine.ts:pick` | `pick.wgsl:PickU`, `test/render.mjs` |
 | `vecs.bin` (300 B/palabra) | `pipeline/vectors.py` | `galaxy/vectors.ts`, `test/unit.mjs` |
+| Uniform de la sala (96 B) | `rooms/descent/engine.ts:writeUni` | `rooms/descent/render.wgsl:Uni`, `test/descent.mjs` |
+| Dominio y altura del campo | `rooms/descent/field.wgsl` | `rooms/descent/field.mjs` (encuadre y siembra) |
 
-`test/render.mjs` además **reimplementa** `perspective`/`lookAt`/`multiply` de
-`camera.ts` y el cálculo de centroide+p95. Si tocas cualquiera de esas cosas en
+`perspective`/`lookAt`/`multiply` viven en `test/mat.mjs` y el codificador PNG en
+`test/png.mjs`: los comparten `render.mjs` y `descent.mjs`. Siguen siendo un
+reimplementado de `camera.ts` —esa duplicación no está resuelta—, pero es **una**
+y no una por test. Si tocas cualquiera de esas cosas en
 `src/`, hay que replicarlo en el test o el PNG deja de representar la web.
 
 El color de zona y los escalones de resalte **ya no se duplican**: viven en

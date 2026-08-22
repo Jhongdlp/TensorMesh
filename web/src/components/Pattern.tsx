@@ -142,7 +142,7 @@ export default function Pattern({
 /** Patrón: una forma repetida, dos veces igual y una distinta. */
 const IcoPattern = () => (
   <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
-       strokeWidth={1.5} strokeLinecap="round" aria-hidden="true">
+       strokeWidth={1.8} strokeLinecap="round" aria-hidden="true">
     <path d="M4 8h7M4 16h7" />
     <circle cx="17" cy="8" r="2.2" />
     <circle cx="17" cy="16" r="2.2" />
@@ -151,7 +151,7 @@ const IcoPattern = () => (
 
 const Caret = ({ open }: { open: boolean }) => (
   <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
-       strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+       strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <path d={open ? "M14 6l-6 6 6 6" : "M10 6l6 6-6 6"} />
   </svg>
 );

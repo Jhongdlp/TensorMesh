@@ -35,13 +35,12 @@ const FLY: { keys: string[]; es: string; en: string }[] = [
 ];
 
 export default function KeyHelp(
-  { lang, label, mode = "orbit" }: { lang: string; label: string; mode?: "orbit" | "fly" },
+  { lang, mode = "orbit" }: { lang: string; mode?: "orbit" | "fly" },
 ) {
   const en = lang === "en";
   const rows = mode === "fly" ? FLY : ORBIT;
   return (
-    <details className="hud keys" open>
-      <summary>{label}</summary>
+    <div className="keys">
       <dl>
         {rows.map(r => (
           <div key={r.keys.join()}>
@@ -54,6 +53,6 @@ export default function KeyHelp(
           </div>
         ))}
       </dl>
-    </details>
+    </div>
   );
 }

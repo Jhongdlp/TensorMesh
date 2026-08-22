@@ -1,0 +1,270 @@
+---
+// Sala 02 — descenso de gradiente.
+//
+// Página aparte y no un modo dentro de `index.astro`. Tres razones, todas
+// comprobables en el código de al lado: `Galaxy.tsx` son 1.400 líneas cuyo
+// vocabulario es de grafo (`select(id)`, `selectPath`, comunidades) y no
+// generaliza; un canvas no puede tener contexto WebGL y WebGPU a la vez y el
+// motor se elige una sola vez en arranque; y quien viene por el gradiente no
+// tiene por qué descargar los 2,1 MB de binarios del atlas.
+import Descent from "../rooms/descent/Descent.tsx";
+---
+
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Descenso · Atlas Vectorial</title>
+    <meta
+      name="description"
+      content="Descenso de gradiente dibujado como campo: diez mil caminantes soltados a la vez sobre la función de Rosenbrock."
+    />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&family=Space+Grotesk:wght@500;700&display=swap"
+    />
+  </head>
+  <body>
+    <Descent client:only="react" />
+
+    <style is:global>
+      :root {
+        --ground: #050709;
+        --ink: #e8e8ec;
+        --ink-2: rgba(232, 232, 236, 0.62);
+        --ink-3: rgba(232, 232, 236, 0.38);
+        --mono: "IBM Plex Mono", ui-monospace, monospace;
+      }
+
+      * { box-sizing: border-box; }
+
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: var(--ground);
+        color: var(--ink);
+        font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        overflow: hidden;
+      }
+
+      .room { position: fixed; inset: 0; }
+
+      /* El lienzo ocupa la pantalla y recibe todos los punteros: la cámara se
+         engancha a él, así que cualquier panel que se le ponga encima tiene que
+         devolver los eventos o se come los arrastres que iban a orbitar. */
+      .room-canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+        touch-action: none;
+        cursor: grab;
+      }
+      .room-canvas:active { cursor: grabbing; }
+
+      .room-head,
+      .room-foot,
+      .room-hud { pointer-events: none; }
+      .room-head a,
+      .room-hud button { pointer-events: auto; }
+
+      /* ---- Cabecera ---- */
+      .room-head {
+        position: absolute;
+        top: 1.8rem;
+        left: 2rem;
+        display: flex;
+        gap: 1.6rem;
+        align-items: flex-start;
+        max-width: 30rem;
+      }
+
+      .room-back {
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--ink-3);
+        text-decoration: none;
+        padding-top: 0.55rem;
+        white-space: nowrap;
+        transition: color 0.2s;
+      }
+      .room-back:hover { color: var(--ink); }
+
+      .room-head h1 {
+        font-family: "Space Grotesk", "Helvetica Neue", Arial, sans-serif;
+        font-weight: 700;
+        font-size: 2.4rem;
+        line-height: 1;
+        letter-spacing: -0.035em;
+        margin: 0 0 0.5rem;
+      }
+
+      .room-head p {
+        margin: 0;
+        font-size: 0.9rem;
+        line-height: 1.5;
+        color: var(--ink-2);
+        max-width: 24rem;
+      }
+
+      /* ---- Lectura ---- */
+      .room-hud {
+        position: absolute;
+        top: 1.8rem;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        align-items: center;
+        gap: 1.1rem;
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        letter-spacing: 0.04em;
+        color: var(--ink-3);
+        font-variant-numeric: tabular-nums;
+      }
+      .room-hud .done { color: var(--ink-2); }
+
+      /* ---- Raíl de mandos ---- */
+      /* Los mandos van a la derecha y el texto a la izquierda, como en el
+         atlas. `pointer-events` sólo los recupera el raíl: si el contenedor
+         entero los cogiera, se comería la mitad derecha del lienzo para
+         orbitar. */
+      .room-rail {
+        position: absolute;
+        top: 1.8rem;
+        right: 1.6rem;
+        width: 14.5rem;
+        max-height: calc(100vh - 3.6rem);
+        overflow-y: auto;
+        pointer-events: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 1.05rem;
+        padding: 1rem 1.05rem 1.1rem;
+        background: rgba(10, 12, 16, 0.72);
+        backdrop-filter: blur(9px);
+        border: 1px solid rgba(232, 232, 236, 0.09);
+        border-radius: 3px;
+      }
+      .room-rail section { display: flex; flex-direction: column; gap: 0.5rem; }
+
+      .lbl {
+        margin: 0;
+        font-family: var(--mono);
+        font-size: 0.64rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--ink-3);
+        display: flex;
+        justify-content: space-between;
+        gap: 0.5rem;
+      }
+      .lbl .val {
+        color: var(--ink-2);
+        letter-spacing: 0.03em;
+        text-transform: none;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+      .chip, .btn {
+        font-family: var(--mono);
+        font-size: 0.66rem;
+        letter-spacing: 0.05em;
+        color: var(--ink-2);
+        background: rgba(232, 232, 236, 0.06);
+        border: 1px solid rgba(232, 232, 236, 0.12);
+        border-radius: 2px;
+        padding: 0.34rem 0.5rem;
+        cursor: pointer;
+        transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+      }
+      .chip:hover, .btn:hover {
+        background: rgba(232, 232, 236, 0.13);
+        color: var(--ink);
+      }
+      /* El elegido va en positivo —fondo claro, texto oscuro— y no con un
+         borde de acento: sobre un raíl translúcido encima de un relieve que
+         cambia de color, un borde fino se pierde y un bloque sólido no. */
+      .chip.on {
+        background: var(--ink);
+        border-color: var(--ink);
+        color: #0a0c10;
+      }
+      .chip:focus-visible, .btn:focus-visible,
+      input[type="range"]:focus-visible {
+        outline: 2px solid #7f9bff;
+        outline-offset: 2px;
+      }
+
+      .row { display: flex; gap: 0.3rem; }
+      .row .btn { flex: 1; text-align: center; }
+
+      input[type="range"] {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 100%;
+        height: 2px;
+        background: rgba(232, 232, 236, 0.2);
+        border-radius: 2px;
+        cursor: pointer;
+      }
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 11px; height: 11px;
+        border-radius: 50%;
+        background: var(--ink);
+        border: 0;
+      }
+      input[type="range"]::-moz-range-thumb {
+        width: 11px; height: 11px;
+        border-radius: 50%;
+        background: var(--ink);
+        border: 0;
+      }
+
+      /* ---- Sin WebGPU ---- */
+      .room-nogpu {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        gap: 0.7rem;
+        text-align: center;
+        padding: 2rem;
+        background: var(--ground);
+        z-index: 5;
+      }
+      .room-nogpu p { margin: 0; max-width: 30rem; color: var(--ink-2); font-size: 0.92rem; line-height: 1.6; }
+      .room-nogpu-title {
+        font-family: "Space Grotesk", "Helvetica Neue", Arial, sans-serif;
+        font-size: 1.4rem !important;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        color: var(--ink) !important;
+      }
+      .room-nogpu code { font-family: var(--mono); font-size: 0.88em; color: var(--ink); }
+
+      @media (max-width: 1100px) {
+        .room-foot { display: none; }
+      }
+
+      @media (max-width: 760px) {
+        .room-head { top: 1.1rem; left: 1.1rem; right: 1.1rem; gap: 1rem; }
+        .room-head h1 { font-size: 1.8rem; }
+        .room-hud { top: auto; bottom: 1.1rem; left: 1.1rem; transform: none; gap: 0.8rem; }
+        .room-rail {
+          top: auto; bottom: 3.2rem; right: 0.8rem; left: 0.8rem;
+          width: auto; max-height: 45vh;
+        }
+      }
+    </style>
+  </body>
+</html>

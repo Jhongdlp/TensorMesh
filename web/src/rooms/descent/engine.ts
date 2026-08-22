@@ -1,0 +1,606 @@
+/** Sala 02 — descenso de gradiente. Fase 01.
+ *
+ *  La fase 00 contestó su pregunta: el armazón del atlas se despega de su dato.
+ *  Esto es la sala de verdad — cinco superficies, tres optimizadores, relieve
+ *  sombreado, estelas y presupuesto de frame.
+ *
+ *  Lo que se hereda del atlas sin tocar una línea: `gpu/camera.ts` (órbita,
+ *  vuelo, `Inicio`, tope de alejamiento), `keys.mjs` y `palette.mjs`. Lo que no
+ *  se hereda: ni un shader.
+ *
+ *  Tres pasadas por frame, en este orden y por estas razones:
+ *
+ *  1. **Relieve** → lienzo, opaco y con profundidad. Es lo único que escribe el
+ *     búfer de profundidad, y lo escribe para los demás.
+ *  2. **Estelas** → textura propia, cargando lo que había. Primero un triángulo
+ *     que multiplica el destino por un factor menor que uno, después los
+ *     caminantes en aditivo. La profundidad va **en sólo lectura** contra la que
+ *     dejó el relieve, así que un caminante al otro lado de una loma queda
+ *     tapado por ella.
+ *  3. **Composición** → lienzo, aditivo. Las estelas suman luz sobre el terreno
+ *     en vez de taparlo, que es lo que las hace legibles sobre una ladera clara
+ *     y sobre el fondo del valle a la vez.
+ *
+ *  El anillo de uniformes, que la fase 00 se ahorró, vuelve: la corrección de
+ *  sesgo de Adam depende del número de paso, así que cada dispatch necesita su
+ *  ranura de 256 B. Es exactamente por lo que el atlas tiene el suyo.
+ */
+import { OrbitCamera } from "../../galaxy/gpu/camera";
+import {
+  SURFACES, HYPER, N_DEFAULT, N_MAX, OPTS,
+  metricsOf, seedWalkers,
+} from "./field.mjs";
+import fieldWGSL from "./field.wgsl?raw";
+import walkersWGSL from "./walkers.wgsl?raw";
+import surfaceWGSL from "./surface.wgsl?raw";
+import renderWGSL from "./render.wgsl?raw";
+import trailsWGSL from "./trails.wgsl?raw";
+
+const DEPTH: GPUTextureFormat = "depth16unorm";
+/** rgba16float y no rgba8: la acumulación suma miles de aportaciones pequeñas y
+ *  en 8 bits se pierde todo lo que no llegue a 1/255 en un solo frame — que es
+ *  justamente lo que forma la estela. */
+const TRAIL: GPUTextureFormat = "rgba16float";
+
+const WALKER_SIZE = 0.009;
+const MIN_PX = 1.35;
+/** Cuánto se levanta el caminante sobre el relieve. Sin esto, punto y malla
+ *  ocupan la misma profundidad y la prueba `less` los borra a medias: aparecen
+ *  y desaparecen según el ángulo. */
+const LIFT = 0.012;
+const MESH_RES = 192;
+
+/** Las cinco funciones tienen dos tiempos muy separados —en Rosenbrock el
+ *  término en y es `200·(y − x²)` y todo el mundo cae sobre la parábola en diez
+ *  pasos— así que a ocho pasos por frame el primer acto dura dos frames y nadie
+ *  lo ve. Los primeros 40 van de uno en uno. El contador está a la vista. */
+const SLOW_UNTIL = 40;
+const STEPS_SLOW = 1;
+const STEPS_FAST = 8;
+const TOTAL_STEPS = 6000;
+/** Tope de pasos por frame: cada uno ocupa una ranura del anillo. */
+const MAX_STEPS = 16;
+const UNI_ALIGN = 256;
+
+/** Presupuesto de frame, el mismo que el atlas. */
+const BUDGET = 15.0;
+const CALM = 90;
+const LOD_MIN = 0.25;
+const LOD_MARGIN = 0.08;
+
+/** Persistencia de la estela. `KEEP_MOVING` es mucho más baja a propósito: la
+ *  textura vive en espacio de pantalla, así que lo acumulado deja de valer en
+ *  cuanto la cámara gira. Bajando el factor mientras hay movimiento, la estela
+ *  vieja se disuelve en unos frames en vez de quedarse pegada describiendo un
+ *  encuadre que ya no existe. */
+const KEEP_MOVING = 0.80;
+const KEEP_REF = 0.965;
+/** Tope de la memoria efectiva. Con `keep = 1` la estela no se borra nunca y
+ *  `1/(1−keep)` es infinito, así que la exposición se calcula como si fuese una
+ *  toma de 800 frames: es lo que hace que «permanente» sea un ajuste más y no
+ *  un caso especial que lava la imagen. */
+const MEM_MAX = 800;
+const MEM_REF = 1 / (1 - KEEP_REF);
+/** Exposición base del caminante, calibrada a `N_DEFAULT` y a `KEEP_REF`. */
+const EXPOSE = 0.55;
+
+export interface Options {
+  surface: number;
+  opt: number;
+  lr: number;
+  n: number;
+  keep: number;
+  running: boolean;
+  plan: boolean;
+  adaptive: boolean;
+}
+
+export const DEFAULTS: Options = {
+  surface: 0, opt: 1, lr: 0, n: N_DEFAULT, keep: KEEP_REF,
+  running: true, plan: false, adaptive: true,
+};
+
+export interface Stats {
+  fps: number;
+  steps: number;
+  live: number;
+  res: number;
+  done: boolean;
+}
+
+export async function gpuAvailable(): Promise<GPUDevice | null> {
+  if (typeof navigator === "undefined" || !navigator.gpu) return null;
+  // Evitar WebGPU en Firefox debido a problemas de estabilidad y cuelgues (crashes)
+  // con el dibujo indirecto y la compactación en GPU.
+  if (/firefox/i.test(navigator.userAgent)) return null;
+  try {
+    const adapter = await navigator.gpu.requestAdapter({ powerPreference: "high-performance" });
+    if (!adapter) return null;
+    return await adapter.requestDevice();
+  } catch {
+    return null;
+  }
+}
+
+export class DescentEngine {
+  readonly camera = new OrbitCamera();
+  readonly stats: Stats = { fps: 0, steps: 0, live: N_DEFAULT, res: 1, done: false };
+  opts: Options = { ...DEFAULTS };
+
+  private ctx: GPUCanvasContext;
+  private fmt: GPUTextureFormat;
+  private raf = 0;
+  private cur = 0;
+  private steps = 0;
+  private lastAt = 0;
+  private dirty = true;
+  private seedValue = 1;
+  private metrics = metricsOf(SURFACES[0]);
+  private clearTrail = true;
+
+  private lodScale = 1;
+  private lodCeil = 1;
+  private resScale = 1;
+  private cooldown = 0;
+
+  private st: [GPUBuffer, GPUBuffer];
+  private acc: GPUBuffer;
+  private tint: GPUBuffer;
+  private surfU: GPUBuffer;
+  private stepU: GPUBuffer;
+  private walkerU: GPUBuffer;
+  private meshU: GPUBuffer;
+  private trailSmp: GPUSampler;
+
+  private depthTex: GPUTexture | null = null;
+  private trailTex: GPUTexture | null = null;
+  private texW = 0;
+  private texH = 0;
+  private compBG: GPUBindGroup | null = null;
+
+  private stepPipe: GPUComputePipeline;
+  private surfPipe: GPURenderPipeline;
+  private walkPipe: GPURenderPipeline;
+  private fadePipe: GPURenderPipeline;
+  private compPipe: GPURenderPipeline;
+
+  private stepBG: GPUBindGroup[][];
+  private walkBG: [GPUBindGroup, GPUBindGroup];
+  private surfBG0: GPUBindGroup;
+  private stepGroup1: GPUBindGroup;
+  private surfGroup1: GPUBindGroup;
+  private walkGroup1: GPUBindGroup;
+
+  constructor(
+    private device: GPUDevice,
+    private canvas: HTMLCanvasElement,
+    opts?: Partial<Options>,
+  ) {
+    Object.assign(this.opts, opts);
+    this.ctx = canvas.getContext("webgpu") as GPUCanvasContext;
+    this.fmt = navigator.gpu.getPreferredCanvasFormat();
+    this.ctx.configure({ device, format: this.fmt, alphaMode: "opaque" });
+
+    const S = GPUBufferUsage.STORAGE;
+    const CD = GPUBufferUsage.COPY_DST;
+    const mk = (bytes: number, usage: number) => device.createBuffer({ size: bytes, usage });
+
+    // Se reserva para `N_MAX` una sola vez. Mover el mando de caminantes no
+    // reasigna nada: sólo cambia cuántos se despachan y cuántos se dibujan.
+    this.st = [mk(N_MAX * 8, S | CD), mk(N_MAX * 8, S | CD)];
+    this.acc = mk(N_MAX * 16, S | CD);
+    this.tint = mk(N_MAX * 16, S | CD);
+    this.surfU = mk(64, GPUBufferUsage.UNIFORM | CD);
+    this.stepU = mk(MAX_STEPS * UNI_ALIGN, GPUBufferUsage.UNIFORM | CD);
+    this.walkerU = mk(112, GPUBufferUsage.UNIFORM | CD);
+    this.meshU = mk(96, GPUBufferUsage.UNIFORM | CD);
+    this.trailSmp = device.createSampler({ magFilter: "linear", minFilter: "linear" });
+
+    // `field.wgsl` se antepone a los tres módulos que necesitan el campo. El
+    // grupo 1 es siempre la superficie; el 0, lo de cada pasada.
+    const stepMod = device.createShaderModule({ code: fieldWGSL + "\n" + walkersWGSL });
+    const surfMod = device.createShaderModule({ code: fieldWGSL + "\n" + surfaceWGSL });
+    const walkMod = device.createShaderModule({ code: fieldWGSL + "\n" + renderWGSL });
+    const trailMod = device.createShaderModule({ code: trailsWGSL });
+
+    this.stepPipe = device.createComputePipeline({
+      layout: "auto", compute: { module: stepMod, entryPoint: "step" },
+    });
+
+    this.surfPipe = device.createRenderPipeline({
+      layout: "auto",
+      vertex: { module: surfMod, entryPoint: "vsSurface" },
+      fragment: { module: surfMod, entryPoint: "fsSurface", targets: [{ format: this.fmt }] },
+      primitive: { topology: "triangle-list" },
+      depthStencil: { format: DEPTH, depthWriteEnabled: true, depthCompare: "less" },
+    });
+
+    this.walkPipe = device.createRenderPipeline({
+      layout: "auto",
+      vertex: { module: walkMod, entryPoint: "vsWalker" },
+      fragment: {
+        module: walkMod, entryPoint: "fsWalker",
+        targets: [{
+          format: TRAIL,
+          blend: {
+            color: { srcFactor: "src-alpha", dstFactor: "one", operation: "add" },
+            alpha: { srcFactor: "one", dstFactor: "one", operation: "add" },
+          },
+        }],
+      },
+      primitive: { topology: "triangle-list" },
+      // Sólo lectura de profundidad: se respeta el relieve sin estropearlo.
+      depthStencil: { format: DEPTH, depthWriteEnabled: false, depthCompare: "less" },
+    });
+
+    this.fadePipe = device.createRenderPipeline({
+      layout: "auto",
+      vertex: { module: trailMod, entryPoint: "vsFull" },
+      fragment: {
+        module: trailMod, entryPoint: "fsFade",
+        targets: [{
+          format: TRAIL,
+          // `(zero, constant)`: el destino se multiplica por la constante de
+          // mezcla. Es la forma de leer y escribir el mismo adjunto sin una
+          // segunda textura de ping-pong.
+          blend: {
+            color: { srcFactor: "zero", dstFactor: "constant", operation: "add" },
+            alpha: { srcFactor: "zero", dstFactor: "constant", operation: "add" },
+          },
+        }],
+      },
+      primitive: { topology: "triangle-list" },
+      depthStencil: { format: DEPTH, depthWriteEnabled: false, depthCompare: "always" },
+    });
+
+    this.compPipe = device.createRenderPipeline({
+      layout: "auto",
+      vertex: { module: trailMod, entryPoint: "vsFull" },
+      fragment: {
+        module: trailMod, entryPoint: "fsComposite",
+        targets: [{
+          format: this.fmt,
+          blend: {
+            color: { srcFactor: "one", dstFactor: "one", operation: "add" },
+            alpha: { srcFactor: "one", dstFactor: "one", operation: "add" },
+          },
+        }],
+      },
+      primitive: { topology: "triangle-list" },
+    });
+
+    // Grupo 1 = superficie, uno por pipeline: con `layout: "auto"` cada uno
+    // genera su propio layout aunque tengan la misma forma.
+    const g1 = (p: GPUComputePipeline | GPURenderPipeline) => device.createBindGroup({
+      layout: p.getBindGroupLayout(1),
+      entries: [{ binding: 0, resource: { buffer: this.surfU } }],
+    });
+    this.stepGroup1 = g1(this.stepPipe);
+    this.surfGroup1 = g1(this.surfPipe);
+    this.walkGroup1 = g1(this.walkPipe);
+
+    this.surfBG0 = device.createBindGroup({
+      layout: this.surfPipe.getBindGroupLayout(0),
+      entries: [{ binding: 0, resource: { buffer: this.meshU } }],
+    });
+
+    const sg = (a: GPUBuffer, b: GPUBuffer, slot: number) => device.createBindGroup({
+      layout: this.stepPipe.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: a } },
+        { binding: 1, resource: { buffer: b } },
+        { binding: 2, resource: { buffer: this.acc } },
+        { binding: 3, resource: { buffer: this.stepU, offset: slot * UNI_ALIGN, size: 48 } },
+      ],
+    });
+    this.stepBG = [
+      Array.from({ length: MAX_STEPS }, (_, k) => sg(this.st[0], this.st[1], k)),
+      Array.from({ length: MAX_STEPS }, (_, k) => sg(this.st[1], this.st[0], k)),
+    ];
+
+    const wg = (p: GPUBuffer) => device.createBindGroup({
+      layout: this.walkPipe.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.walkerU } },
+        { binding: 1, resource: { buffer: p } },
+        { binding: 2, resource: { buffer: this.tint } },
+      ],
+    });
+    this.walkBG = [wg(this.st[0]), wg(this.st[1])];
+
+    this.loadSurface(this.opts.surface, true);
+    this.camera.frame(this.metrics.radius);
+    this.camera.attach(canvas);
+    this.raf = requestAnimationFrame(this.loop);
+  }
+
+  // ------------------------------------------------------------------ estado
+
+  /** Cambia de superficie: reescribe el uniforme del campo, resiembra y borra
+   *  la estela. El encuadre **no** se toca: las cinco están normalizadas al
+   *  mismo tamaño de mundo, así que pasar de una a otra no obliga a reaprender
+   *  la escala ni a recolocar la cámara — que es lo que permite compararlas. */
+  loadSurface(i: number, initial = false) {
+    this.opts.surface = i;
+    const surf = SURFACES[i];
+    this.metrics = metricsOf(surf);
+    this.opts.lr = surf.opt[OPTS[this.opts.opt]].lr;
+
+    const b = new ArrayBuffer(64);
+    new Uint32Array(b, 0, 4).set([i, MESH_RES, 0, 0]);
+    const m = this.metrics;
+    new Float32Array(b, 16, 12).set([
+      surf.dom[0], surf.dom[2], surf.dom[1], surf.dom[3],
+      m.cx, m.cy, m.k, m.fMin,
+      m.hScale, m.hOffset, m.halfX, m.halfY,
+    ]);
+    this.device.queue.writeBuffer(this.surfU, 0, b);
+    this.reseed(this.seedValue + (initial ? 0 : 1));
+  }
+
+  setOpt(i: number) {
+    this.opts.opt = i;
+    this.opts.lr = SURFACES[this.opts.surface].opt[OPTS[i]].lr;
+    this.reseed(this.seedValue);
+  }
+
+  reseed(s: number) {
+    this.seedValue = s;
+    const { st, tint } = seedWalkers(SURFACES[this.opts.surface], N_MAX, s, WALKER_SIZE);
+    this.device.queue.writeBuffer(this.st[0], 0, st);
+    this.device.queue.writeBuffer(this.st[1], 0, st);
+    this.device.queue.writeBuffer(this.tint, 0, tint);
+    this.device.queue.writeBuffer(this.acc, 0, new Float32Array(N_MAX * 4));
+    this.cur = 0;
+    this.steps = 0;
+    this.stats.done = false;
+    this.clearTrail = true;
+    this.dirty = true;
+  }
+
+  set(patch: Partial<Options>) {
+    const n0 = this.opts.n, k0 = this.opts.keep;
+    Object.assign(this.opts, patch);
+    // Cambiar el reparto de luz con estela vieja encima daría un fogonazo:
+    // la acumulada se calibró con otra exposición.
+    if (this.opts.n !== n0 || this.opts.keep !== k0) this.clearTrail = true;
+    this.dirty = true;
+  }
+
+  goHome() { this.camera.goHome(); this.dirty = true; }
+
+  // -------------------------------------------------------------- objetivos
+
+  private ensureTargets(w: number, h: number) {
+    if (this.depthTex && this.texW === w && this.texH === h) return;
+    this.depthTex?.destroy();
+    this.trailTex?.destroy();
+    this.depthTex = this.device.createTexture({
+      size: { width: w, height: h }, format: DEPTH,
+      usage: GPUTextureUsage.RENDER_ATTACHMENT,
+    });
+    this.trailTex = this.device.createTexture({
+      size: { width: w, height: h }, format: TRAIL,
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+    });
+    this.compBG = this.device.createBindGroup({
+      layout: this.compPipe.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: this.trailTex.createView() },
+        { binding: 1, resource: this.trailSmp },
+      ],
+    });
+    this.texW = w; this.texH = h;
+    this.clearTrail = true;
+  }
+
+  // --------------------------------------------------------------- uniformes
+
+  private writeStep(slot: number, stepNo: number, live: number) {
+    const surf = SURFACES[this.opts.surface];
+    const key = OPTS[this.opts.opt];
+    const b = new ArrayBuffer(48);
+    new Uint32Array(b, 0, 4).set([this.opts.opt, stepNo, live, 0]);
+    new Float32Array(b, 16, 8).set([
+      this.opts.lr, surf.opt[key].clip,
+      HYPER.mu, HYPER.b1, HYPER.b2, HYPER.eps, 0, 0,
+    ]);
+    this.device.queue.writeBuffer(this.stepU, slot * UNI_ALIGN, b);
+  }
+
+  private writeMesh(vp: Float32Array) {
+    const b = new ArrayBuffer(96);
+    const f = new Float32Array(b);
+    f.set(vp, 0);
+    const d = this.camera.distance;
+    const fogSpan = Math.max(d, this.metrics.radius * 0.35) * 2.3;
+    // Luz fija **en mundo** y no en cámara: girar alrededor del relieve tiene
+    // que cambiar lo que se ve, no cómo está iluminado. Con luz de cámara, una
+    // ladera se ve igual desde los dos lados y el relieve se aplana.
+    f.set([0.45, 0.78, 0.44, 0], 16);
+    f.set([this.metrics.hLo, this.metrics.hHi, d - fogSpan * 0.45, fogSpan], 20);
+    this.device.queue.writeBuffer(this.meshU, 0, b);
+  }
+
+  private writeWalker(vp: Float32Array, w: number, h: number, live: number, keep: number) {
+    const b = new ArrayBuffer(112);
+    const f = new Float32Array(b);
+    f.set(vp, 0);
+    // `projXX`/`projYY` salen de la **proyección**, no de `viewProj`:
+    // `viewProj[0]` lleva dentro la rotación de la vista, así que el caminante
+    // cambiaría de tamaño al orbitar. Mismo cálculo que `engine.ts:writeRender`.
+    const proj = this.camera.projection(w / h);
+    const d = this.camera.distance;
+    const fogSpan = Math.max(d, this.metrics.radius * 0.35) * 2.3;
+    // Exposición compensada por cuántos caminantes hay vivos **y** por cuánto
+    // dura la estela: la luz acumulada es `live · bright · memoria`, así que sin
+    // compensar, subir el número o la persistencia lava la imagen. Mismo
+    // argumento que el brillo de aristas del atlas.
+    const mem = Math.min(MEM_MAX, 1 / Math.max(1 - keep, 1e-6));
+    const bright = EXPOSE * (N_DEFAULT / live) * (MEM_REF / mem);
+    f.set([
+      proj[0], proj[5], w, h,
+      d - fogSpan * 0.45, fogSpan, MIN_PX, WALKER_SIZE,
+      bright, LIFT, 0, 0,
+    ], 16);
+    this.device.queue.writeBuffer(this.walkerU, 0, b);
+  }
+
+  // ------------------------------------------------------------------- bucle
+
+  private loop = () => {
+    this.raf = requestAnimationFrame(this.loop);
+    const now = performance.now();
+    const dt = this.lastAt ? now - this.lastAt : 16;
+    if (this.lastAt) {
+      const inst = 1000 / Math.max(1, dt);
+      this.stats.fps = this.stats.fps ? this.stats.fps * 0.9 + inst * 0.1 : inst;
+    }
+    this.lastAt = now;
+
+    // Planta o relieve: **es la misma cámara mirando a plomo**, no otra sala.
+    // Se interpola en vez de saltar, porque el salto pierde el «esto es lo
+    // mismo que estabas viendo».
+    const wantPhi = this.opts.plan ? 0.06 : 1.15;
+    if (Math.abs(this.camera.phi - wantPhi) > 1e-3) {
+      this.camera.phi += (wantPhi - this.camera.phi) * 0.12;
+      this.dirty = true;
+    }
+
+    const stepping = this.opts.running && this.steps < TOTAL_STEPS;
+    const moving = this.camera.moving();
+    if (!stepping && !moving && !this.dirty) return;
+    this.dirty = false;
+
+    // Lazo AIMD, el del atlas: baja de golpe, sube a pasitos y **no vuelve al
+    // nivel que acaba de fallar**. Aquí los mandos son otros —primero los
+    // caminantes vivos, después la resolución— porque el coste ya no está en la
+    // malla de aristas sino en el relleno de la estela.
+    if (this.opts.adaptive) {
+      const over = dt > BUDGET * 1.3, under = dt < BUDGET * 1.15;
+      if (this.cooldown > 0) this.cooldown--;
+      if (over) {
+        this.lodCeil = Math.max(LOD_MIN, this.lodScale - LOD_MARGIN);
+        if (this.lodScale > LOD_MIN) this.lodScale = Math.max(LOD_MIN, this.lodScale - 0.10);
+        else this.resScale = Math.max(0.55, this.resScale - 0.05);
+        this.cooldown = CALM;
+      } else if (under && this.cooldown === 0) {
+        if (this.resScale < 1) this.resScale = Math.min(1, this.resScale + 0.02);
+        else if (this.lodScale < this.lodCeil) this.lodScale = Math.min(this.lodCeil, this.lodScale + 0.01);
+        else if (this.lodCeil < 1) { this.lodCeil = Math.min(1, this.lodCeil + 0.05); this.cooldown = CALM; }
+      }
+    } else if (this.lodScale !== 1 || this.resScale !== 1) {
+      this.lodScale = 1; this.resScale = 1; this.lodCeil = 1;
+    }
+
+    const live = Math.max(1024, Math.round(this.opts.n * this.lodScale));
+    this.stats.live = live;
+    this.stats.res = this.resScale;
+
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    const w = Math.max(1, Math.round(this.canvas.clientWidth * dpr * this.resScale));
+    const h = Math.max(1, Math.round(this.canvas.clientHeight * dpr * this.resScale));
+    if (this.canvas.width !== w || this.canvas.height !== h) {
+      this.canvas.width = w; this.canvas.height = h;
+    }
+    this.ensureTargets(w, h);
+
+    const rate = this.steps < SLOW_UNTIL ? STEPS_SLOW : STEPS_FAST;
+    const steps = stepping ? Math.min(rate, MAX_STEPS, TOTAL_STEPS - this.steps) : 0;
+    // Los uniformes de todos los pasos se escriben *antes* de codificar nada:
+    // `writeBuffer` se aplica en orden de cola, así que para cuando el command
+    // buffer corra, cada ranura del anillo ya tiene su número de paso.
+    for (let s = 0; s < steps; s++) this.writeStep(s, this.steps + s + 1, live);
+
+    this.camera.update();
+    const vp = this.camera.viewProj(w / h);
+    const keep = moving ? KEEP_MOVING : this.opts.keep;
+    this.writeMesh(vp);
+    this.writeWalker(vp, w, h, live, keep);
+
+    const enc = this.device.createCommandEncoder();
+
+    if (steps > 0) {
+      const cp = enc.beginComputePass();
+      cp.setPipeline(this.stepPipe);
+      cp.setBindGroup(1, this.stepGroup1);
+      for (let s = 0; s < steps; s++) {
+        cp.setBindGroup(0, this.stepBG[this.cur][s]);
+        cp.dispatchWorkgroups(Math.ceil(live / 64));
+        this.cur ^= 1;
+      }
+      cp.end();
+      this.steps += steps;
+      this.stats.steps = this.steps;
+      if (this.steps >= TOTAL_STEPS) this.stats.done = true;
+    }
+
+    const target = this.ctx.getCurrentTexture().createView();
+
+    // 1 — relieve
+    const mesh = enc.beginRenderPass({
+      colorAttachments: [{
+        view: target,
+        clearValue: { r: 0.012, g: 0.016, b: 0.030, a: 1 },
+        loadOp: "clear", storeOp: "store",
+      }],
+      depthStencilAttachment: {
+        view: this.depthTex!.createView(),
+        depthClearValue: 1.0, depthLoadOp: "clear", depthStoreOp: "store",
+      },
+    });
+    mesh.setPipeline(this.surfPipe);
+    mesh.setBindGroup(0, this.surfBG0);
+    mesh.setBindGroup(1, this.surfGroup1);
+    mesh.draw((MESH_RES - 1) * (MESH_RES - 1) * 6);
+    mesh.end();
+
+    // 2 — estelas
+    const wipe = this.clearTrail;
+    const trail = enc.beginRenderPass({
+      colorAttachments: [{
+        view: this.trailTex!.createView(),
+        clearValue: { r: 0, g: 0, b: 0, a: 0 },
+        loadOp: wipe ? "clear" : "load",
+        storeOp: "store",
+      }],
+      depthStencilAttachment: {
+        view: this.depthTex!.createView(),
+        depthLoadOp: "load", depthStoreOp: "store",
+      },
+    });
+    if (!wipe) {
+      trail.setPipeline(this.fadePipe);
+      trail.setBlendConstant({ r: keep, g: keep, b: keep, a: keep });
+      trail.draw(3);
+    }
+    this.clearTrail = false;
+    trail.setPipeline(this.walkPipe);
+    trail.setBindGroup(0, this.walkBG[this.cur]);
+    trail.setBindGroup(1, this.walkGroup1);
+    trail.draw(6, live);
+    trail.end();
+
+    // 3 — composición
+    const comp = enc.beginRenderPass({
+      colorAttachments: [{ view: target, loadOp: "load", storeOp: "store" }],
+    });
+    comp.setPipeline(this.compPipe);
+    comp.setBindGroup(0, this.compBG!);
+    comp.draw(3);
+    comp.end();
+
+    this.device.queue.submit([enc.finish()]);
+  };
+
+  dispose() {
+    cancelAnimationFrame(this.raf);
+    this.camera.dispose();
+    this.depthTex?.destroy();
+    this.trailTex?.destroy();
+    this.st[0].destroy(); this.st[1].destroy();
+    this.acc.destroy(); this.tint.destroy();
+    this.surfU.destroy(); this.stepU.destroy();
+    this.walkerU.destroy(); this.meshU.destroy();
+  }
+}

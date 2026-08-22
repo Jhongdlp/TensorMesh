@@ -8,10 +8,13 @@
  * que valida los shaders de render y las matrices sin abrir un navegador.
  */
 import { readFileSync, writeFileSync } from "node:fs";
-import { deflateSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import gpuMod from "@kmamal/gpu";
+// El codificador PNG vive en test/png.mjs: lo comparte con test/descent.mjs.
+import { png } from "./png.mjs";
+// Y las matrices en test/mat.mjs, por lo mismo.
+import { perspective, lookAt, mul } from "./mat.mjs";
 // El color de zona y los escalones de resalte se importan del propio src: son
 // .mjs justamente para que el test no tenga que reimplementarlos y desviarse.
 import { zoneColours } from "../src/galaxy/palette.mjs";
@@ -28,75 +31,6 @@ const STEPS = Number(process.argv[3] ?? 250);
 // 1280×720 son 0,92 Mpx, pero un canvas de 1440p a dpr 2 son 8,3.
 const W = Number(process.env.W ?? 1280), H = Number(process.env.H ?? 720);
 if (W % 64) throw new Error(`W=${W}: W*4 debe ser múltiplo de 256`);
-
-// ------------------------------------------------------------------ PNG mínimo
-const CRC = (() => {
-  const t = new Int32Array(256);
-  for (let n = 0; n < 256; n++) {
-    let c = n;
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    t[n] = c;
-  }
-  return t;
-})();
-const crc32 = (b) => {
-  let c = -1;
-  for (let i = 0; i < b.length; i++) c = CRC[(c ^ b[i]) & 0xff] ^ (c >>> 8);
-  return (c ^ -1) >>> 0;
-};
-function png(w, h, rgba) {
-  const stride = w * 4;
-  const raw = Buffer.alloc((stride + 1) * h);
-  for (let y = 0; y < h; y++) {
-    raw[y * (stride + 1)] = 0;
-    rgba.copy(raw, y * (stride + 1) + 1, y * stride, (y + 1) * stride);
-  }
-  const chunk = (type, data) => {
-    const len = Buffer.alloc(4); len.writeUInt32BE(data.length);
-    const body = Buffer.concat([Buffer.from(type, "latin1"), data]);
-    const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(body));
-    return Buffer.concat([len, body, crc]);
-  };
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4);
-  ihdr[8] = 8; ihdr[9] = 6;
-  return Buffer.concat([
-    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-    chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw, { level: 6 })),
-    chunk("IEND", Buffer.alloc(0)),
-  ]);
-}
-
-// ------------------------------------------------------------------ matrices
-const perspective = (fov, aspect, near, far) => {
-  const f = 1 / Math.tan(fov / 2), m = new Float32Array(16);
-  m[0] = f / aspect; m[5] = f; m[10] = far / (near - far); m[11] = -1;
-  m[14] = (far * near) / (near - far);
-  return m;
-};
-function lookAt(e, a, up) {
-  let zx = e[0] - a[0], zy = e[1] - a[1], zz = e[2] - a[2];
-  let l = Math.hypot(zx, zy, zz) || 1; zx /= l; zy /= l; zz /= l;
-  let xx = up[1] * zz - up[2] * zy, xy = up[2] * zx - up[0] * zz, xz = up[0] * zy - up[1] * zx;
-  l = Math.hypot(xx, xy, xz) || 1; xx /= l; xy /= l; xz /= l;
-  const yx = zy * xz - zz * xy, yy = zz * xx - zx * xz, yz = zx * xy - zy * xx;
-  const m = new Float32Array(16);
-  m[0] = xx; m[1] = yx; m[2] = zx; m[4] = xy; m[5] = yy; m[6] = zy;
-  m[8] = xz; m[9] = yz; m[10] = zz;
-  m[12] = -(xx * e[0] + xy * e[1] + xz * e[2]);
-  m[13] = -(yx * e[0] + yy * e[1] + yz * e[2]);
-  m[14] = -(zx * e[0] + zy * e[1] + zz * e[2]);
-  m[15] = 1;
-  return m;
-}
-const mul = (a, b) => {
-  const o = new Float32Array(16);
-  for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) {
-    o[c * 4 + r] = a[r] * b[c * 4] + a[4 + r] * b[c * 4 + 1] +
-                   a[8 + r] * b[c * 4 + 2] + a[12 + r] * b[c * 4 + 3];
-  }
-  return o;
-};
 
 // ------------------------------------------------------------------ datos
 const DATA = join(HERE, "..", "public", "data", LANG);

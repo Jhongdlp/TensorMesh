@@ -13,6 +13,7 @@ import { Vectors } from "../galaxy/vectors";
 import { MAX_WORDS } from "../galaxy/compare.mjs";
 import Compare from "./Compare";
 import Welcome, { introPending } from "./Welcome";
+import LandingPage from "./LandingPage";
 import Legend from "./Legend";
 import Pattern from "./Pattern";
 import Analogy from "./Analogy";
@@ -29,7 +30,7 @@ const COPY = {
   es: { search: "buscar una palabra…", words: "palabras", edges: "aristas",
         regions: "regiones", loading: "cargando binarios…", region: "región",
         freq: "frecuencia", stop: "palabra vacía",
-        live: "webgpu · simulación viva", static: "webgl · posiciones fijas",
+        live: "webgpu · simulación viva", static: "webgl · posiciones fijas", sim: "simulación",
         hint: "pasa el ratón sobre un punto · clic para abrirlo",
         hintOut: "clic en el vacío o esc para soltarla",
         shut: "cerrar", esc: "esc", drop: "soltar",
@@ -121,7 +122,7 @@ const COPY = {
   en: { search: "search a word…", words: "words", edges: "edges",
         regions: "regions", loading: "loading binaries…", region: "region",
         freq: "frequency", stop: "stop word",
-        live: "webgpu · live simulation", static: "webgl · fixed positions",
+        live: "webgpu · live simulation", static: "webgl · fixed positions", sim: "simulation",
         hint: "hover a dot · click to open it",
         hintOut: "click empty space or press esc to let it go",
         shut: "close", esc: "esc", drop: "let go",
@@ -217,13 +218,22 @@ const COPY = {
  *  más que estas líneas. El `stroke-width` es 1.5 para que a 15 px no se
  *  empasten — a 2 el círculo de la órbita se cierra en una mancha. */
 const ico = {
-  fill: "none", stroke: "currentColor", strokeWidth: 1.5,
+  fill: "none", stroke: "currentColor", strokeWidth: 1.8,
   strokeLinecap: "round" as const, strokeLinejoin: "round" as const,
 };
 
 const IcoChevron = ({ open }: { open: boolean }) => (
   <svg viewBox="0 0 24 24" width="17" height="17" {...ico} aria-hidden="true">
     <path d={open ? "M14 6l-6 6 6 6" : "M10 6l6 6-6 6"} />
+  </svg>
+);
+
+const IcoControls = () => (
+  <svg viewBox="0 0 24 24" width="17" height="17" {...ico} aria-hidden="true">
+    <path d="M4 6h16M4 12h16M4 18h16" />
+    <circle cx="8" cy="6" r="2.2" fill="currentColor" />
+    <circle cx="15" cy="12" r="2.2" fill="currentColor" />
+    <circle cx="10" cy="18" r="2.2" fill="currentColor" />
   </svg>
 );
 
@@ -296,6 +306,13 @@ const IcoShare = () => (
   </svg>
 );
 
+const IcoKeys = () => (
+  <svg viewBox="0 0 24 24" width="17" height="17" {...ico} aria-hidden="true">
+    <rect x="3" y="6" width="18" height="12" rx="2" />
+    <path d="M7 10h2M11 10h2M15 10h2M7 14h10" />
+  </svg>
+);
+
 /** Lo que la vista necesita, sea cual sea el motor debajo. */
 interface Viewer {
   select(id: number | null): void;
@@ -345,7 +362,7 @@ const FRAME_MAX = 64;
  *  50.000 nodos más el mapeo de un buffer, así que no puede ir por evento. */
 const HOVER_MS = 90;
 
-export default function GalaxyView({ lang: initial = "es" }: { lang?: string }) {
+export default function GalaxyView({ lang: initial = "es", initialView }: { lang?: string; initialView?: 'landing' | 'app' }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewerRef = useRef<Viewer | null>(null);
   const engineRef = useRef<GpuEngine | null>(null);
@@ -401,12 +418,21 @@ export default function GalaxyView({ lang: initial = "es" }: { lang?: string }) 
    *  enlace que ya apunta a algo— y se reabre desde el botón `?`. Se decide en
    *  el inicializador y no en un efecto: puesta después del primer pintado,
    *  aparecería de golpe encima de una galaxia ya dibujada. */
-  const [intro, setIntro] = useState(introPending);
+  const [intro, setIntro] = useState(false);
+  const [view, setView] = useState<'landing' | 'app'>(() => {
+    if (initialView) return initialView;
+    if (typeof window === "undefined") return "landing";
+    const q = new URLSearchParams(location.search);
+    return q.get("w") || q.get("cmp") ? "app" : "landing";
+  });
   /** Los tres paneles nuevos del cajón. Independientes y no un acordeón: la
    *  leyenda es lo que se deja abierto mientras se usa lo demás. */
   const [zonesOn, setZonesOn] = useState(false);
   const [patOn, setPatOn] = useState(false);
   const [anaOn, setAnaOn] = useState(false);
+  const [controlsOn, setControlsOn] = useState(false);
+  const [keysOn, setKeysOn] = useState(true);
+  const [cardOpen, setCardOpen] = useState(true);
   /** Aviso de un instante: copiar el enlace no cambia nada en pantalla, así que
    *  sin esto no hay forma de saber si funcionó. */
   const [toast, setToast] = useState<string | null>(null);
@@ -420,7 +446,11 @@ export default function GalaxyView({ lang: initial = "es" }: { lang?: string }) 
    *  dejar los paneles tapando un tercio del lienzo no es pantalla completa. */
   const [zen, setZen] = useState(false);
   /** Modo atractor: nadie toca nada desde hace rato. */
-  const [attract, setAttract] = useState(false);
+  const [attract, setAttract] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const q = new URLSearchParams(location.search);
+    return q.get("w") === null && q.get("cmp") === null;
+  });
   /** La palabra que el atractor tiene encendida ahora mismo. */
   const [drift, setDrift] = useState<number | null>(null);
   /** El grupo encendido, para poder devolverlo a su sitio después de un resalte
@@ -465,6 +495,7 @@ export default function GalaxyView({ lang: initial = "es" }: { lang?: string }) 
   }, []);
 
   useEffect(() => {
+    if (view !== 'app') return;
     let dead = false;
     setG(null); setSel(null); setPath(null);
     setHover(null); setError(null); setCmpIds([]);
@@ -472,7 +503,7 @@ export default function GalaxyView({ lang: initial = "es" }: { lang?: string }) 
       .then(gal => { if (!dead) setG(gal); })
       .catch(e => { if (!dead) setError(String(e)); });
     return () => { dead = true; };
-  }, [lang]);
+  }, [lang, view]);
 
   useEffect(() => {
     if (!g || gpu === null || !canvasRef.current) return;
@@ -527,6 +558,7 @@ export default function GalaxyView({ lang: initial = "es" }: { lang?: string }) 
   ) => {
     const v = viewerRef.current;
     setSel(a);
+    if (a !== null) setCardOpen(true);
     setError(null);
     // Tanto `select` como `selectPath` reescriben el canal de resalte entero,
     // así que a partir de aquí el grupo del comparador ya no está encendido.
@@ -985,7 +1017,7 @@ export default function GalaxyView({ lang: initial = "es" }: { lang?: string }) 
 
   return (
     <div className={"galaxy-root" + (side ? " side-open" : "") + (cmp ? " cmp-open" : "") +
-                    (zen ? " zen" : "")}>
+                    (zen ? " zen" : "") + (view === 'landing' ? " in-landing" : " in-app")}>
       <canvas
         ref={canvasRef}
         className={"galaxy-canvas" + (hover ? " over" : "")}
@@ -1007,7 +1039,9 @@ export default function GalaxyView({ lang: initial = "es" }: { lang?: string }) 
           estática que el compositor ya iba a mezclar de todos modos. */}
       <div className="veil" aria-hidden="true" />
 
-      {/* La salida, donde se está mirando.
+      {view === 'app' ? (
+        <>
+          {/* La salida, donde se está mirando.
           Antes la única forma visible de soltar era un «×» de 11 px en la
           esquina de un panel del raíl derecho — y con un grupo del comparador
           resaltado no había ficha, así que no había ningún botón en absoluto.
@@ -1090,24 +1124,6 @@ export default function GalaxyView({ lang: initial = "es" }: { lang?: string }) 
           >
             <IcoChevron open={side} />
           </button>
-          <button
-            className={"tool" + (cameraMode === 'orbit' ? " on" : "")}
-            onClick={() => setCameraMode('orbit')}
-            aria-pressed={cameraMode === 'orbit'}
-            aria-label={t.navOrbit}
-            title={t.navOrbit}
-          >
-            <IcoOrbit />
-          </button>
-          <button
-            className={"tool" + (cameraMode === 'fly' ? " on" : "")}
-            onClick={() => setCameraMode('fly')}
-            aria-pressed={cameraMode === 'fly'}
-            aria-label={t.navFly}
-            title={t.navFly}
-          >
-            <IcoFly />
-          </button>
           {/* Vista completa, en blanco pleno como la flecha del cajón y no al 42%
               como los modos: no anuncia un estado, es la salida de emergencia
               del encuadre, y la salida se tiene que ver. Su forma grande está
@@ -1120,6 +1136,53 @@ export default function GalaxyView({ lang: initial = "es" }: { lang?: string }) 
           >
             <IcoFit />
           </button>
+          {!side && gpu && g && (
+            <button
+              className={"tool" + (controlsOn ? " on" : "")}
+              onClick={() => {
+                setControlsOn(o => {
+                  const next = !o;
+                  if (next) setSide(true);
+                  return next;
+                });
+              }}
+              aria-expanded={controlsOn}
+              aria-label={t.sim}
+              title={t.sim}
+            >
+              <IcoControls />
+            </button>
+          )}
+          {!side && g && (
+            <>
+              <button
+                className={"tool" + (cameraMode === 'orbit' ? " on" : "")}
+                onClick={() => setCameraMode('orbit')}
+                aria-pressed={cameraMode === 'orbit'}
+                aria-label={t.navOrbit}
+                title={t.navOrbit}
+              >
+                <IcoOrbit />
+              </button>
+              <button
+                className={"tool" + (cameraMode === 'fly' ? " on" : "")}
+                onClick={() => setCameraMode('fly')}
+                aria-pressed={cameraMode === 'fly'}
+                aria-label={t.navFly}
+                title={t.navFly}
+              >
+                <IcoFly />
+              </button>
+              <button
+                className="tool"
+                onClick={() => setIntro(true)}
+                aria-label={t.guide}
+                title={t.guide}
+              >
+                <IcoHelp />
+              </button>
+            </>
+          )}
           {/* Pantalla completa. Última de la tira, que es donde la busca todo el
               mundo, y con estado (`aria-pressed`) porque es un modo. */}
           <button
@@ -1142,21 +1205,55 @@ export default function GalaxyView({ lang: initial = "es" }: { lang?: string }) 
           >
             <IcoShare />
           </button>
-          {/* La presentación, siempre a mano. Va la última de la tira y no
-              dentro del cuerpo del cajón porque el cuerpo se pliega: una
-              explicación que desaparece al plegar el panel es una explicación
-              que no se encuentra justo cuando hace falta. */}
+        </div>
+
+        <div className="side-body">
+          <a
+            href="/"
+            className="side-back-btn"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "0.45rem",
+              width: "100%",
+              background: "rgba(242, 239, 233, 0.05)",
+              border: "1px solid rgba(242, 239, 233, 0.12)",
+              borderRadius: "9px",
+              color: "var(--ink-2)",
+              fontFamily: "IBM Plex Mono, monospace",
+              fontSize: "0.65rem",
+              fontWeight: 600,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              padding: "0.48rem",
+              textDecoration: "none",
+              cursor: "pointer",
+              transition: "background 0.15s, border-color 0.15s, color 0.15s"
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.background = "rgba(242, 239, 233, 0.1)";
+              e.currentTarget.style.color = "var(--ink)";
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.background = "rgba(242, 239, 233, 0.05)";
+              e.currentTarget.style.color = "var(--ink-2)";
+            }}
+          >
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M19 12H5M12 19l-7-7 7-7" />
+            </svg>
+            <span>Volver a Inicio</span>
+          </a>
           <button
-            className="tool"
+            className="guide-btn"
             onClick={() => setIntro(true)}
             aria-label={t.guide}
             title={t.guide}
           >
             <IcoHelp />
+            <span>{t.guide}</span>
           </button>
-        </div>
-
-        <div className="side-body">
           <div className="langs" role="group">
             {LANGS.map(l => (
               <button
@@ -1252,43 +1349,73 @@ export default function GalaxyView({ lang: initial = "es" }: { lang?: string }) 
               onWord={id => choose(id)}
             />
           )}
-          {g && (
-            <p className="stat">
-              {fmt(g.meta.nodes)} {t.words} · {fmt(g.meta.edges)} {t.edges} ·{" "}
-              {g.meta.communities} {t.regions}
-            </p>
-          )}
-          {gpu !== null && (
-            <p className={"stat mode" + (gpu ? " mode-live" : "")}>
-              {gpu ? t.live : t.static}
-            </p>
-          )}
-          {/* La pista cambia con el estado: mientras no hay nada cogido dice
-              cómo coger, y en cuanto lo hay dice cómo soltar. Es el sitio donde
-              ya se estaba mirando al aprender el gesto, así que la salida se
-              aprende en el mismo renglón que la entrada. */}
-          {g && (
-            <p className="stat hint">
-              {sel !== null || path || lit ? t.hintOut : t.hint}
-            </p>
-          )}
           {error && <p className="err">{error}</p>}
           {!g && !error && <p className="stat">{t.loading}</p>}
+          {g && (
+            <>
+              <hr className="side-sep" />
+              {gpu && (
+                <>
+                  <button
+                    className={"cmp-tab" + (controlsOn ? " on" : "")}
+                    onClick={() => setControlsOn(o => !o)}
+                    aria-expanded={controlsOn}
+                  >
+                    <IcoControls />
+                    <span className="cmp-tab-w">{t.sim}</span>
+                    <span className="cmp-n">{fps.toFixed(0)}</span>
+                    <span className="cmp-caret"><IcoChevron open={!controlsOn} /></span>
+                  </button>
+                  {controlsOn && (
+                    <div className="ctl-panel">
+                      <Controls
+                        params={params}
+                        onChange={applyParams}
+                        onReset={reset}
+                        fps={fps}
+                        visible={visible}
+                        total={{ nodes: g.meta.nodes, edges: g.meta.edges }}
+                      />
+                    </div>
+                  )}
+                </>
+              )}
+              <button
+                className={"cmp-tab" + (cameraMode === 'orbit' ? " on" : "")}
+                onClick={() => setCameraMode('orbit')}
+                aria-pressed={cameraMode === 'orbit'}
+              >
+                <IcoOrbit />
+                <span className="cmp-tab-w">{t.navOrbit}</span>
+              </button>
+              <button
+                className={"cmp-tab" + (cameraMode === 'fly' ? " on" : "")}
+                onClick={() => setCameraMode('fly')}
+                aria-pressed={cameraMode === 'fly'}
+              >
+                <IcoFly />
+                <span className="cmp-tab-w">{t.navFly}</span>
+              </button>
+              <button
+                className={"cmp-tab" + (keysOn ? " on" : "")}
+                onClick={() => setKeysOn(o => !o)}
+                aria-expanded={keysOn}
+              >
+                <IcoKeys />
+                <span className="cmp-tab-w">{t.keys}</span>
+                <span className="cmp-caret"><IcoChevron open={!keysOn} /></span>
+              </button>
+              {keysOn && (
+                <div className="ctl-panel">
+                  <KeyHelp lang={lang} mode={cameraMode} />
+                </div>
+              )}
+            </>
+          )}
         </div>
       </aside>
-      {/* Raíl derecho: mandos de simulación (sólo WebGPU) y teclas. */}
+      {/* Raíl derecho: teclas. */}
       <div className="rail rail-r">
-        {gpu && g && (
-          <Controls
-            params={params}
-            onChange={applyParams}
-            onReset={reset}
-            fps={fps}
-            visible={visible}
-            total={{ nodes: g.meta.nodes, edges: g.meta.edges }}
-          />
-        )}
-        {g && <KeyHelp lang={lang} label={t.keys} mode={cameraMode} />}
         {/* Con las manos vacías, el hueco de la ficha no se queda en blanco:
             ofrece las tres formas de entrar. Sin esto la primera pantalla del
             atlas —y, tras `Esc`, todas las demás— no proponía ningún gesto. */}
@@ -1305,7 +1432,16 @@ export default function GalaxyView({ lang: initial = "es" }: { lang?: string }) 
           />
         )}
         {sel !== null && g && (
-          <aside className="card">
+          <aside className={"card" + (cardOpen ? " card-open" : "")}>
+            <button
+              className="card-toggle"
+              onClick={() => setCardOpen(o => !o)}
+              aria-expanded={cardOpen}
+              aria-label={cardOpen ? t.close : t.open}
+              title={cardOpen ? t.close : t.open}
+            >
+              <IcoChevron open={!cardOpen} />
+            </button>
             <header className="card-head">
               <p className="kicker">
                 {/* El punto de zona es el único color que queda en la ficha, y no
@@ -1404,6 +1540,10 @@ export default function GalaxyView({ lang: initial = "es" }: { lang?: string }) 
         <a href="https://fasttext.cc/docs/en/crawl-vectors.html">fastText</a>{" "}
         · Facebook Research · CC BY-SA 3.0
       </p>
+        </>
+      ) : (
+        <LandingPage onExplore={() => setView('app')} />
+      )}
     </div>
   );
 }

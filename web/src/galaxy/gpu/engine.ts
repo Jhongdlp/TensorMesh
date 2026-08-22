@@ -36,7 +36,7 @@ export interface Params {
 
 export const DEFAULTS: Params = {
   ks: 1.0, kr: 0.15, dt: 0.55, drag: 0.9, gravity: 0.0,
-  K: 24, alpha: 1.0, running: true, stepsPerFrame: 1,
+  K: 24, alpha: 1.0, running: false, stepsPerFrame: 1,
   edgeBright: 0.85, minPx: 2.0, minEdgePx: 1.2, range: 0.8, adaptiveRes: true,
 };
 
@@ -75,7 +75,10 @@ const PATH_MAX = 64;
 const DEPTH: GPUTextureFormat = "depth16unorm";
 
 export async function gpuAvailable(): Promise<GPUDevice | null> {
-  if (!navigator.gpu) return null;
+  if (typeof navigator === "undefined" || !navigator.gpu) return null;
+  // Evitar WebGPU en Firefox debido a problemas de estabilidad y cuelgues (crashes)
+  // con el dibujo indirecto y la compactación en GPU.
+  if (/firefox/i.test(navigator.userAgent)) return null;
   try {
     const adapter = await navigator.gpu.requestAdapter({ powerPreference: "high-performance" });
     if (!adapter) return null;
@@ -464,8 +467,7 @@ export class GpuEngine {
     new Float32Array(buf, 80, 12).set([
       proj[0], proj[5], fogNear, 1.0,
       edgeB, this.params.minPx * dpr, w, h,
-      2.5,   // selScale: el elegido crece ×6 y sus vecinos ×3,4, y con ello sube
-             // también su suelo en píxeles: siempre localizable, aun de lejos
+      0.0,   // selScale: el elegido crece ×6 y sus vecinos ×3,4 (ahora desactivado)
       selEdge, fogSpan, edgeRef,
     ]);
     this.device.queue.writeBuffer(this.renderU, 0, buf);

@@ -253,7 +253,7 @@ export class OrbitCamera {
   /** Amortiguación: el movimiento sigue un frame después de soltar el ratón. */
   update() {
     if (this.flyTarget) {
-      const k = 0.14;
+      const k = 0.08;
       for (let i = 0; i < 3; i++) {
         this.target[i] += (this.flyTarget[i] - this.target[i]) * k;
       }
