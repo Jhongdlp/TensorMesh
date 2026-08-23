@@ -1,0 +1,222 @@
+export interface LandingRoomCopy {
+  id: string;
+  glyph: "nebula" | "descent" | "som" | "hnsw" | "mcts" | "kmeans";
+  previewImg: string;
+  previewAlt: string;
+  status: string;
+  title: string;
+  desc: string;
+  href: string;
+  action: string;
+  intercept?: boolean;
+}
+
+export interface LandingCopy {
+  brandFirst: string;
+  brandSecond: string;
+  navEnter: string;
+  navRooms: string;
+  navAlgorithm: string;
+  navSource: string;
+  titleLine1: string;
+  titleLine2: string;
+  titleLine3: string;
+  mlTag: string;
+  mlEq: string;
+  mlFoot: string;
+  noteText: string;
+  noteAttrib: string;
+  scrollLabel: string;
+  roomsTitle1: string;
+  roomsTitle2: string;
+  roomsLead: string;
+  rooms: LandingRoomCopy[];
+  footerAttrib: string;
+  footerSource: string;
+  footerPlan: string;
+}
+
+export const LANDING_COPY: Record<"es" | "en", LandingCopy> = {
+  es: {
+    brandFirst: "Atlas",
+    brandSecond: "Vectorial",
+    navEnter: "Entrar",
+    navRooms: "Salas",
+    navAlgorithm: "Algoritmo",
+    navSource: "Código",
+    titleLine1: "las palabras",
+    titleLine2: "tienen",
+    titleLine3: "gravedad.",
+    mlTag: "Aprendizaje profundo, hecho navegable",
+    mlEq: "rey − hombre + mujer ≈ reina",
+    mlFoot: "coseno 0.72 en 300 dimensiones · nadie escribió esa regla",
+    noteText: "50.000 palabras colocadas por simulación de fuerzas físicas sobre su grafo de vecinos más cercanos, no por reducción de dimensiones.",
+    noteAttrib: "fastText Crawl Vectors · CC BY-SA 3.0",
+    scrollLabel: "Salas",
+    roomsTitle1: "algoritmos por los que",
+    roomsTitle2: "puedes caminar.",
+    roomsLead: "Cada sala convierte una idea del aprendizaje automático en un espacio en lugar de un diagrama. Nada aquí está prerenderizado: las fuerzas, los vectores y el descenso se ejecutan en tu propia GPU mientras los observas.",
+    rooms: [
+      {
+        id: "01",
+        glyph: "nebula",
+        previewImg: "/previews/nebula-es.png",
+        previewAlt: "Nebulosa de Embeddings (50.000 palabras en 3D)",
+        status: "Abierta",
+        title: "Nebulosa de Embeddings",
+        desc: "50.000 palabras colocadas en 3D simulando resortes sobre su grafo de vecinos más cercanos, no por reducción de dimensiones. El color es vecindad; cada similitud se mide en las 300 dimensiones originales.",
+        href: "/embedding-nebula",
+        action: "Entrar a la galaxia",
+      },
+      {
+        id: "02",
+        glyph: "descent",
+        previewImg: "/previews/descent.png",
+        previewAlt: "Descenso de Gradiente (Superficie de Rosenbrock y 40.000 caminantes GPU)",
+        status: "Abierta",
+        title: "Descenso de Gradiente",
+        desc: "Diez mil caminantes soltados a la vez sobre la superficie de Rosenbrock. Caen al cañón en diez pasos y luego pasan cuatro mil avanzando por él, que es todo el dilema de un desfiladero.",
+        href: "/gradient-descent",
+        action: "Ejecutar el descenso",
+      },
+      {
+        id: "03",
+        glyph: "som",
+        previewImg: "/previews/som.png",
+        previewAlt: "Mapas Autoorganizados (Malla neuronal topológica 3D)",
+        status: "Abierta",
+        title: "Mapas Autoorganizados",
+        desc: "Una malla 3D de nodos neuronales que se estira y pliega en tiempo real para adaptarse a una nube de puntos 3D. Elige diferentes figuras (esferas, toros, hélices, atractor de Lorenz) y observa la adaptación topológica mediante compute shaders WebGPU.",
+        href: "/self-organizing-maps",
+        action: "Ejecutar el mapa",
+      },
+      {
+        id: "04",
+        glyph: "hnsw",
+        previewImg: "/previews/hnsw.png",
+        previewAlt: "Búsqueda Vectorial HNSW (Navegación de grafo jerárquico multicapa)",
+        status: "Abierta",
+        title: "Búsqueda Vectorial HNSW",
+        desc: "Grafos Navigable Small World jerárquicos en 3D. Observa cómo las bases de datos vectoriales y motores de recuperación de LLMs realizan saltos voraces a través de capas estratificadas a velocidad logarítmica.",
+        href: "/hnsw",
+        action: "Explorar las capas",
+      },
+      {
+        id: "05",
+        glyph: "mcts",
+        previewImg: "/previews/mcts.png",
+        previewAlt: "Árboles de Razonamiento MCTS (Tree-of-Thoughts y Cómputo en Inferencia)",
+        status: "Abierta",
+        title: "Árboles de Razonamiento MCTS",
+        desc: "Árboles de pensamiento (Tree-of-Thoughts) y búsqueda Monte Carlo Tree Search en 3D. Observa cómo agentes de razonamiento modernos (DeepSeek-R1, OpenAI o1) exploran hipótesis, retropropagan recompensas y podan caminos para hallar demostraciones lógicas verificadas.",
+        href: "/mcts",
+        action: "Explorar el árbol",
+      },
+      {
+        id: "06",
+        glyph: "kmeans",
+        previewImg: "/previews/kmeans.png",
+        previewAlt: "Agrupamiento K-Means y Voronoi 3D (Expectation-Maximization)",
+        status: "Abierta",
+        title: "Agrupamiento K-Means",
+        desc: "Agrupamiento no supervisado y particiones de Voronoi 3D en tiempo real. Observa cómo centroides gravitacionales iteran mediante Expectation-Maximization para minimizar la inercia intracluster en nubes de puntos complejas.",
+        href: "/kmeans",
+        action: "Agrupar los puntos",
+      },
+    ],
+    footerAttrib: "fastText Crawl Vectors · CC BY-SA 3.0",
+    footerSource: "Código fuente",
+    footerPlan: "Plan técnico",
+  },
+  en: {
+    brandFirst: "Vector",
+    brandSecond: "Atlas",
+    navEnter: "Enter",
+    navRooms: "Rooms",
+    navAlgorithm: "Algorithm",
+    navSource: "Source",
+    titleLine1: "words",
+    titleLine2: "have",
+    titleLine3: "gravity.",
+    mlTag: "Deep learning, made navigable",
+    mlEq: "king − man + woman ≈ queen",
+    mlFoot: "cosine 0.72 across 300 dimensions · nobody wrote that rule",
+    noteText: "50,000 words placed by simulating physical forces on their nearest-neighbor graph, not by dimension reduction.",
+    noteAttrib: "fastText Crawl Vectors · CC BY-SA 3.0",
+    scrollLabel: "Scroll",
+    roomsTitle1: "algorithms you can",
+    roomsTitle2: "walk through.",
+    roomsLead: "Each room turns one idea out of machine learning into a place instead of a diagram. Nothing here is pre-rendered: the forces, the vectors and the descent all run on your own GPU while you look at them.",
+    rooms: [
+      {
+        id: "01",
+        glyph: "nebula",
+        previewImg: "/previews/nebula-en.png",
+        previewAlt: "Embedding Nebula (50,000 words in 3D, English graph)",
+        status: "Open",
+        title: "Embedding Nebula",
+        desc: "50,000 words placed in 3D by simulating springs over their nearest-neighbor graph — not by dimension reduction. Color is neighborhood; every similarity you read is measured back in the original 300 dimensions.",
+        href: "/embedding-nebula",
+        action: "Enter the galaxy",
+      },
+      {
+        id: "02",
+        glyph: "descent",
+        previewImg: "/previews/descent.png",
+        previewAlt: "Gradient Descent (Rosenbrock surface & 40,000 GPU walkers)",
+        status: "Open",
+        title: "Gradient Descent",
+        desc: "Ten thousand walkers dropped at once onto the Rosenbrock surface. They fall onto the parabola within ten steps and then spend four thousand crawling along it — which is the whole trouble with a ravine.",
+        href: "/gradient-descent",
+        action: "Run the descent",
+      },
+      {
+        id: "03",
+        glyph: "som",
+        previewImg: "/previews/som.png",
+        previewAlt: "Self-Organizing Maps (3D neural topological sheet adaptation)",
+        status: "Open",
+        title: "Self-Organizing Maps",
+        desc: "A 3D grid of neural nodes stretching and folding in real-time to fit a 3D point cloud. You can choose different target shapes (spheres, toruses, double helices, Lorenz attractors) and watch the topological sheet adapt using WebGPU compute shaders.",
+        href: "/self-organizing-maps",
+        action: "Run the map",
+      },
+      {
+        id: "04",
+        glyph: "hnsw",
+        previewImg: "/previews/hnsw.png",
+        previewAlt: "HNSW Vector Search (Multi-layer hierarchical graph navigation)",
+        status: "Open",
+        title: "HNSW Vector Search",
+        desc: "Hierarchical Navigable Small World graphs in 3D. Watch how vector databases and LLM retrieval engines perform greedy jumps across stratified layers to find nearest neighbors at logarithmic speed.",
+        href: "/hnsw",
+        action: "Search the layers",
+      },
+      {
+        id: "05",
+        glyph: "mcts",
+        previewImg: "/previews/mcts.png",
+        previewAlt: "MCTS Reasoning Trees (Tree-of-Thoughts & Inference-time Compute)",
+        status: "Open",
+        title: "MCTS Reasoning Trees",
+        desc: "Tree-of-Thoughts and Monte Carlo Tree Search in 3D. Watch how modern reasoning agents (DeepSeek-R1, OpenAI o1) explore hypotheses, backpropagate rewards, and prune dead ends to discover verified logical proofs.",
+        href: "/mcts",
+        action: "Explore the reasoning tree",
+      },
+      {
+        id: "06",
+        glyph: "kmeans",
+        previewImg: "/previews/kmeans.png",
+        previewAlt: "K-Means Clustering & Voronoi 3D (Expectation-Maximization)",
+        status: "Open",
+        title: "K-Means Clustering",
+        desc: "Unsupervised clustering and 3D Voronoi partitions in real-time. Watch gravitational centroids iterate through Expectation-Maximization steps to minimize intra-cluster inertia on complex point clouds.",
+        href: "/kmeans",
+        action: "Cluster the points",
+      },
+    ],
+    footerAttrib: "fastText Crawl Vectors · CC BY-SA 3.0",
+    footerSource: "Source",
+    footerPlan: "Technical plan",
+  },
+};

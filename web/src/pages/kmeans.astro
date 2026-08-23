@@ -1,0 +1,59 @@
+---
+// Sala 06 — K-Means Clustering & Celdas de Voronoi 3D.
+//
+// Visualización 3D interactiva del algoritmo K-Means, el ciclo E-M (Lloyd),
+// convergencia de inercia y particiones de Voronoi en WebGPU.
+import Kmeans from "../rooms/kmeans/Kmeans.tsx";
+import "../styles/shell.css";
+---
+
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>K-Means Clustering & Voronoi 3D · Atlas Vectorial</title>
+    <meta
+      name="description"
+      content="K-Means Clustering en 3D con WebGPU: visualiza en tiempo real el ciclo Expectation-Maximization, la gravitación de centroides y la partición espacial de Voronoi."
+    />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap"
+    />
+  </head>
+  <body>
+    <Kmeans client:only="react" />
+
+    <style is:global>
+      /* --------------------------------------------------- sin WebGPU */
+      .room-nogpu {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        gap: 0.9rem;
+        text-align: center;
+        padding: 2rem;
+        background: var(--void);
+        z-index: 5;
+      }
+      .room-nogpu p {
+        margin: 0;
+        max-width: 30rem;
+        color: var(--ink-2);
+        font-size: 0.92rem;
+        line-height: 1.6;
+      }
+      .room-nogpu-title {
+        font-family: var(--font-display, inherit);
+        font-size: 1.6rem;
+        font-weight: 700;
+        color: var(--ink);
+        margin: 0;
+      }
+    </style>
+  </body>
+</html>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type JSX } from "react";
+import type { Lang } from "../../i18n";
 
 /** Clave de persistencia para el pop-up de introducción de Descenso de Gradiente. */
 export const DESCENT_INTRO_KEY = "descent.intro.v1";
@@ -62,7 +63,8 @@ const IcoPlanView = () => (
 const ART = { viewBox: "0 0 320 100", preserveAspectRatio: "xMidYMid meet" };
 
 /** Lámina 1: Terreno de pérdida con curvas de nivel y caminantes bajando hacia el valle. */
-function ArtDescentTerrain() {
+function ArtDescentTerrain({ lang }: { lang: Lang }) {
+  const isEs = lang === "es";
   return (
     <svg {...ART} className="wl-art" role="img" aria-hidden="true">
       <defs>
@@ -98,15 +100,16 @@ function ArtDescentTerrain() {
       <circle cx="175" cy="80" r="3.5" fill="#73dbff" />
 
       {/* Etiquetas */}
-      <text x="50" y="18" className="wl-art-n" textAnchor="middle">Alto Costo (Pérdida)</text>
-      <text x="160" y="98" className="wl-art-w" textAnchor="middle" fontSize="10">Mínimo f(x*)</text>
-      <text x="270" y="18" className="wl-art-n" textAnchor="middle">Alto Costo (Pérdida)</text>
+      <text x="50" y="18" className="wl-art-n" textAnchor="middle">{isEs ? "Alto Costo (Pérdida)" : "High Cost (Loss)"}</text>
+      <text x="160" y="98" className="wl-art-w" textAnchor="middle" fontSize="10">{isEs ? "Mínimo f(x*)" : "Minimum f(x*)"}</text>
+      <text x="270" y="18" className="wl-art-n" textAnchor="middle">{isEs ? "Alto Costo (Pérdida)" : "High Cost (Loss)"}</text>
     </svg>
   );
 }
 
 /** Lámina 2: El vector gradiente y la actualización del paso. */
-function ArtDescentGradient() {
+function ArtDescentGradient({ lang }: { lang: Lang }) {
+  const isEs = lang === "es";
   return (
     <svg {...ART} className="wl-art" role="img" aria-hidden="true">
       {/* Curva convexa */}
@@ -119,7 +122,7 @@ function ArtDescentGradient() {
       {/* Vector Gradiente (Subida) */}
       <line x1="85" y1="48" x2="55" y2="30" stroke="#ff4d29" strokeWidth="2" />
       <polygon points="55,30 65,34 62,26" fill="#ff4d29" />
-      <text x="48" y="20" className="wl-art-n" textAnchor="middle">∇f (subida)</text>
+      <text x="48" y="20" className="wl-art-n" textAnchor="middle">{isEs ? "∇f (subida)" : "∇f (ascent)"}</text>
 
       {/* Vector Paso Opuesto (-η ∇f) */}
       <line x1="85" y1="48" x2="135" y2="72" stroke="#00f0ff" strokeWidth="2.5" />
@@ -132,13 +135,14 @@ function ArtDescentGradient() {
 
       {/* Mínimo */}
       <circle cx="160" cy="85" r="3" fill="rgba(255,255,255,0.7)" />
-      <text x="160" y="97" className="wl-art-n" textAnchor="middle">Mínimo</text>
+      <text x="160" y="97" className="wl-art-n" textAnchor="middle">{isEs ? "Mínimo" : "Minimum"}</text>
     </svg>
   );
 }
 
 /** Lámina 3: Comparativa de optimizadores (SGD vs Momentum vs Adam). */
-function ArtDescentOptimizers() {
+function ArtDescentOptimizers({ lang }: { lang: Lang }) {
+  const isEs = lang === "es";
   return (
     <svg {...ART} className="wl-art" role="img" aria-hidden="true">
       {/* Líneas de nivel de un valle estrecho alargado */}
@@ -163,78 +167,131 @@ function ArtDescentOptimizers() {
       <circle cx="45" cy="65" r="3" fill="#00f0ff" />
 
       {/* Leyenda a la derecha */}
-      <text x="235" y="32" className="wl-art-n" fill="#ff4d29">━ SGD (Zigzag)</text>
-      <text x="235" y="52" className="wl-art-n" fill="#ffc75c">━ Momento (Inercia)</text>
-      <text x="235" y="72" className="wl-art-n" fill="#00f0ff">━ Adam (Adaptativo)</text>
+      <text x="235" y="32" className="wl-art-n" fill="#ff4d29">━ {isEs ? "SGD (Zigzag)" : "SGD (Zigzag)"}</text>
+      <text x="235" y="52" className="wl-art-n" fill="#ffc75c">━ {isEs ? "Momento (Inercia)" : "Momentum (Inertia)"}</text>
+      <text x="235" y="72" className="wl-art-n" fill="#00f0ff">━ {isEs ? "Adam (Adaptativo)" : "Adam (Adaptive)"}</text>
     </svg>
   );
 }
 
 interface Step {
-  art: (() => JSX.Element) | null;
+  art: (({ lang }: { lang: Lang }) => JSX.Element) | null;
   head: string;
   body: string;
   note: string;
 }
 
-const STEPS: Step[] = [
-  {
-    art: ArtDescentTerrain,
-    head: "Miles de caminantes bajando por la pérdida",
-    body: "En optimización matemática, el error de un modelo se dibuja como un paisaje montañoso 3D. Soltamos 8.000 partículas en paralelo con WebGPU para explorar cómo descienden hacia el valle del costo mínimo.",
-    note: "Cinco caminantes marcados dejan una estela continua para analizar trayectorias individuales.",
-  },
-  {
-    art: ArtDescentGradient,
-    head: "El vector gradiente y la tasa de aprendizaje",
-    body: "El gradiente ∇f apunta hacia donde la función sube más rápido. Cada partícula da un paso en sentido opuesto: x_(t+1) = x_t - η ∇f. La tasa η determina si el paso avanza, rebota o diverge fuera del mapa.",
-    note: "La vertical está escalada en logaritmo (log1p) para que los valles profundos no queden aplastados.",
-  },
-  {
-    art: ArtDescentOptimizers,
-    head: "Descenso Clásico vs. Momento vs. Adam",
-    body: "El Descenso Puro (SGD) rebota en valles angostos. El Momento añade inercia física cancelando oscilaciones. Adam adapta la tasa en cada coordenada normalizando por la varianza del gradiente.",
-    note: "Compara el porcentaje de éxito en las 5 superficies clásicas (Rosenbrock, Himmelblau, Beale, Silla, Rastrigin).",
-  },
-  {
-    art: null,
-    head: "Y ahora, a experimentar",
-    body: "Controla la simulación con atajos rápidos, ajusta el paso en tiempo real y observa el campo de flujo de los optimizadores en el relieve.",
-    note: "WebGPU en vivo · Puedes volver a abrir esta guía en cualquier momento desde la barra lateral.",
-  },
-];
+const STEPS_DATA: Record<Lang, Step[]> = {
+  es: [
+    {
+      art: ArtDescentTerrain,
+      head: "Miles de caminantes bajando por la pérdida",
+      body: "En optimización matemática, el error de un modelo se dibuja como un paisaje montañoso 3D. Soltamos 8.000 partículas en paralelo con WebGPU para explorar cómo descienden hacia el valle del costo mínimo.",
+      note: "Cinco caminantes marcados dejan una estela continua para analizar trayectorias individuales.",
+    },
+    {
+      art: ArtDescentGradient,
+      head: "El vector gradiente y la tasa de aprendizaje",
+      body: "El gradiente ∇f apunta hacia donde la función sube más rápido. Cada partícula da un paso en sentido opuesto: x_(t+1) = x_t - η ∇f. La tasa η determina si el paso avanza, rebota o diverge fuera del mapa.",
+      note: "La vertical está escalada en logaritmo (log1p) para que los valles profundos no queden aplastados.",
+    },
+    {
+      art: ArtDescentOptimizers,
+      head: "Descenso Clásico vs. Momento vs. Adam",
+      body: "El Descenso Puro (SGD) rebota en valles angostos. El Momento añade inercia física cancelando oscilaciones. Adam adapta la tasa en cada coordenada normalizando por la varianza del gradiente.",
+      note: "Compara el porcentaje de éxito en las 5 superficies clásicas (Rosenbrock, Himmelblau, Beale, Silla, Rastrigin).",
+    },
+    {
+      art: null,
+      head: "Y ahora, a experimentar",
+      body: "Controla la simulación con atajos rápidos, ajusta el paso en tiempo real y observa el campo de flujo de los optimizadores en el relieve.",
+      note: "WebGPU en vivo · Puedes volver a abrir esta guía en cualquier momento desde la barra lateral.",
+    },
+  ],
+  en: [
+    {
+      art: ArtDescentTerrain,
+      head: "Thousands of walkers rolling down the loss",
+      body: "In mathematical optimization, the model error is represented as a 3D mountainous landscape. We release 8,000 particles in parallel using WebGPU to observe how they descend toward the minimum cost basin.",
+      note: "Five tracked probes leave continuous trails to analyze individual optimization paths.",
+    },
+    {
+      art: ArtDescentGradient,
+      head: "Gradient vector and learning rate",
+      body: "The gradient vector ∇f points in the steepest ascent direction. Each particle takes a step in the opposite direction: x_(t+1) = x_t - η ∇f. The rate η dictates whether the step converges, bounces, or diverges.",
+      note: "Vertical elevation is scaled logarithmically (log1p) so deep ravines remain readable.",
+    },
+    {
+      art: ArtDescentOptimizers,
+      head: "Vanilla SGD vs. Momentum vs. Adam",
+      body: "Pure SGD oscillates heavily across narrow ravines. Momentum injects physical inertia to cancel lateral bounces. Adam adapts learning rates coordinate-wise by normalizing historical variance.",
+      note: "Compare success convergence rates across 5 benchmark surfaces (Rosenbrock, Himmelblau, Beale, Saddle, Rastrigin).",
+    },
+    {
+      art: null,
+      head: "Time to experiment",
+      body: "Control the live simulation with keyboard shortcuts, tune step sizes in real-time, and explore optimizer flow fields.",
+      note: "Live WebGPU · You can reopen this guide anytime from the sidebar.",
+    },
+  ],
+};
 
-const ACTS = [
-  { Ico: IcoOrbit, title: "Arrastrar el ratón", desc: "gira el relieve 3D en el espacio." },
-  { Ico: IcoPlayPause, title: "Espacio", desc: "pausa o reanuda la marcha del enjambre." },
-  { Ico: IcoReset, title: "Tecla R", desc: "suelta de nuevo a los caminantes con nueva semilla." },
-  { Ico: IcoPlanView, title: "Tecla P", desc: "alterna entre vista de relieve 3D y mapa de planta 2D." },
-];
+const ACTS_DATA: Record<Lang, { Ico: () => JSX.Element; title: string; desc: string }[]> = {
+  es: [
+    { Ico: IcoOrbit, title: "Arrastrar el ratón", desc: "gira el relieve 3D en el espacio." },
+    { Ico: IcoPlayPause, title: "Espacio", desc: "pausa o reanuda la marcha del enjambre." },
+    { Ico: IcoReset, title: "Tecla R", desc: "suelta de nuevo a los caminantes con nueva semilla." },
+    { Ico: IcoPlanView, title: "Tecla P", desc: "alterna entre vista de relieve 3D y mapa de planta 2D." },
+  ],
+  en: [
+    { Ico: IcoOrbit, title: "Drag mouse", desc: "orbit the 3D loss surface in space." },
+    { Ico: IcoPlayPause, title: "Spacebar", desc: "pause or resume particle descent." },
+    { Ico: IcoReset, title: "R key", desc: "respawn walkers with a new random seed." },
+    { Ico: IcoPlanView, title: "P key", desc: "toggle between 3D terrain and 2D contour map." },
+  ],
+};
 
-const UI = {
-  eyebrow: "descenso de gradiente · optimización",
-  skip: "saltar",
-  back: "atrás",
-  next: "siguiente",
-  done: "entrar a la sala",
-  close: "cerrar",
-  more: "o léelo entero en la guía del descenso",
-  step: (i: number, n: number) => `paso ${i} de ${n}`,
-  go: (i: number) => `ir al paso ${i}`,
+const UI_DATA = {
+  es: {
+    eyebrow: "descenso de gradiente · optimización",
+    skip: "saltar",
+    back: "atrás",
+    next: "siguiente",
+    done: "entrar a la sala",
+    close: "cerrar",
+    more: "o léelo entero en la guía del descenso",
+    step: (i: number, n: number) => `paso ${i} de ${n}`,
+    go: (i: number) => `ir al paso ${i}`,
+  },
+  en: {
+    eyebrow: "gradient descent · optimization",
+    skip: "skip",
+    back: "back",
+    next: "next",
+    done: "enter room",
+    close: "close",
+    more: "or read the comprehensive descent guide",
+    step: (i: number, n: number) => `step ${i} of ${n}`,
+    go: (i: number) => `go to step ${i}`,
+  },
 };
 
 export default function DescentWelcome({
   onClose,
   onOpenGuide,
+  lang = "es",
 }: {
   onClose: () => void;
   onOpenGuide?: () => void;
+  lang?: Lang;
 }) {
   const [i, setI] = useState(0);
   const boxRef = useRef<HTMLDivElement>(null);
   const from = useRef<Element | null>(null);
 
-  const steps = STEPS;
+  const steps = STEPS_DATA[lang] ?? STEPS_DATA.es;
+  const acts = ACTS_DATA[lang] ?? ACTS_DATA.es;
+  const ui = UI_DATA[lang] ?? UI_DATA.es;
   const last = i === steps.length - 1;
 
   const shut = useCallback(() => {
@@ -302,15 +359,15 @@ export default function DescentWelcome({
         tabIndex={-1}
       >
         <header className="wl-top">
-          <p className="eyebrow">{UI.eyebrow}</p>
+          <p className="eyebrow">{ui.eyebrow}</p>
           <button className="wl-skip" onClick={shut}>
-            {last ? UI.close : UI.skip} <kbd>esc</kbd>
+            {last ? ui.close : ui.skip} <kbd>esc</kbd>
           </button>
         </header>
 
         {Art && (
           <div className="wl-stage" key={i}>
-            <Art />
+            <Art lang={lang} />
           </div>
         )}
 
@@ -319,7 +376,7 @@ export default function DescentWelcome({
 
         {!Art && (
           <ul className="wl-acts" key={i}>
-            {ACTS.map(({ Ico, title, desc }, k) => (
+            {acts.map(({ Ico, title, desc }, k) => (
               <li key={k}>
                 <span className="wl-acts-i"><Ico /></span>
                 <span><b>{title}</b> {desc}</span>
@@ -333,19 +390,19 @@ export default function DescentWelcome({
         {last && onOpenGuide && (
           <p className="wl-more">
             <button className="link" onClick={() => { rememberDescentIntro(); onOpenGuide(); }}>
-              {UI.more}
+              {ui.more}
             </button>
           </p>
         )}
 
         <footer className="wl-foot">
-          <nav className="wl-dots" aria-label={UI.step(i + 1, steps.length)}>
+          <nav className="wl-dots" aria-label={ui.step(i + 1, steps.length)}>
             {steps.map((_, k) => (
               <button
                 key={k}
                 className={"wl-dot" + (k === i ? " on" : "")}
                 onClick={() => setI(k)}
-                aria-label={UI.go(k + 1)}
+                aria-label={ui.go(k + 1)}
                 aria-current={k === i}
               />
             ))}
@@ -353,14 +410,14 @@ export default function DescentWelcome({
           <span className="wl-acts-n">
             {i > 0 && (
               <button className="wl-back" onClick={() => setI(k => k - 1)}>
-                {UI.back}
+                {ui.back}
               </button>
             )}
             <button
               className="wl-go"
               onClick={() => (last ? shut() : setI(k => k + 1))}
             >
-              {last ? UI.done : UI.next}
+              {last ? ui.done : ui.next}
             </button>
           </span>
         </footer>

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { getStoredLang, setStoredLang, type Lang } from "../i18n";
 import { loadGalaxy, neighbours, type Galaxy } from "../galaxy/loader";
 import { zoneColours } from "../galaxy/palette.mjs";
 import { GalaxyScene } from "../galaxy/scene";
@@ -24,6 +25,7 @@ import {
 } from "./icons";
 import Guide, { type ChapterId } from "./Guide";
 import Foot from "./Foot";
+import GpuRoomLoader from "./GpuRoomLoader";
 import { encodeCam, decodeCam } from "../galaxy/share.mjs";
 import type { CamState } from "../galaxy/gpu/camera";
 
@@ -318,9 +320,7 @@ export default function GalaxyView({ lang: initial = "es", initialView }: { lang
 
   // El idioma vive en la URL: enlaces compartibles y navegación atrás/adelante.
   const [lang, setLang] = useState(() => {
-    if (typeof location === "undefined") return initial;
-    const q = new URLSearchParams(location.search).get("lang");
-    return LANGS.some(l => l.id === q) ? q! : initial;
+    return getStoredLang(initial as Lang);
   });
   const [g, setG] = useState<Galaxy | null>(null);
   const [sel, setSel] = useState<number | null>(null);
@@ -359,7 +359,7 @@ export default function GalaxyView({ lang: initial = "es", initialView }: { lang
    *  enlace que ya apunta a algo— y se reabre desde el botón `?`. Se decide en
    *  el inicializador y no en un efecto: puesta después del primer pintado,
    *  aparecería de golpe encima de una galaxia ya dibujada. */
-  const [intro, setIntro] = useState(false);
+  const [intro, setIntro] = useState(() => introPending());
   /** La guía larga. No es lo mismo que la presentación y por eso es otro estado:
    *  la presentación son cuatro pantallas que se pasan de una vez y salen solas
    *  la primera visita; la guía son diez capítulos que **no salen nunca solos**
@@ -462,10 +462,8 @@ export default function GalaxyView({ lang: initial = "es", initialView }: { lang
   );
 
   const switchTo = useCallback((id: string) => {
-    setLang(id);
-    const u = new URL(location.href);
-    u.searchParams.set("lang", id);
-    history.replaceState(null, "", u);
+    setLang(id as Lang);
+    setStoredLang(id as Lang);
   }, []);
 
   useEffect(() => {
@@ -643,7 +641,7 @@ export default function GalaxyView({ lang: initial = "es", initialView }: { lang
   useEffect(() => {
     const back = () => {
       const l = new URLSearchParams(location.search).get("lang");
-      if (l && l !== lang && LANGS.some(x => x.id === l)) { setLang(l); return; }
+      if (l && l !== lang && LANGS.some(x => x.id === l)) { setLang(l as Lang); return; }
       applyUrl();
     };
     addEventListener("popstate", back);
@@ -1559,6 +1557,10 @@ export default function GalaxyView({ lang: initial = "es", initialView }: { lang
           </aside>
         )}
       </div>
+
+      <GpuRoomLoader 
+        roomName={lang === "es" ? "GALAXIA VECTORIAL" : "VECTOR GALAXY"} 
+      />
 
       {intro && (
         <Welcome

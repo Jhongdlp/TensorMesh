@@ -1,0 +1,59 @@
+---
+// Sala 05 — Árboles de Razonamiento MCTS & Tree-of-Thoughts.
+//
+// Visualización 3D interactiva de Monte Carlo Tree Search y Tree-of-Thoughts
+// con simulación de bifurcaciones, retropropagación de valor y Vía Dorada en WebGPU.
+import Mcts from "../rooms/mcts/Mcts.tsx";
+import "../styles/shell.css";
+---
+
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Árboles de Razonamiento MCTS · Atlas Vectorial</title>
+    <meta
+      name="description"
+      content="Árboles de razonamiento MCTS y Tree-of-Thoughts en 3D: cómo los agentes de IA (DeepSeek R1, OpenAI o1) exploran hipótesis, podan errores y descubren soluciones óptimas en tiempo real."
+    />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap"
+    />
+  </head>
+  <body>
+    <Mcts client:only="react" />
+
+    <style is:global>
+      /* --------------------------------------------------- sin WebGPU */
+      .room-nogpu {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        gap: 0.9rem;
+        text-align: center;
+        padding: 2rem;
+        background: var(--void);
+        z-index: 5;
+      }
+      .room-nogpu p {
+        margin: 0;
+        max-width: 30rem;
+        color: var(--ink-2);
+        font-size: 0.92rem;
+        line-height: 1.6;
+      }
+      .room-nogpu-title {
+        font-family: var(--font-display, inherit);
+        font-size: 1.6rem;
+        font-weight: 700;
+        color: var(--ink);
+        margin: 0;
+      }
+    </style>
+  </body>
+</html>

@@ -1,0 +1,64 @@
+---
+// Sala 04 — Búsqueda Vectorial Multicapa (HNSW).
+//
+// Visualización 3D interactiva del algoritmo Hierarchical Navigable Small World
+// con simulación de saltos voraces, descenso entre capas y métricas en WebGPU.
+import Hnsw from "../rooms/hnsw/Hnsw.tsx";
+import "../styles/shell.css";
+---
+
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HNSW Vector Search · Atlas Vectorial</title>
+    <meta
+      name="description"
+      content="Búsqueda vectorial multicapa (HNSW) en 3D: cómo los LLMs y bases de datos vectoriales recuperan vecinos más cercanos a la velocidad de la luz mediante WebGPU."
+    />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap"
+    />
+  </head>
+  <body>
+    <Hnsw client:only="react" />
+
+    <style is:global>
+      /* --------------------------------------------------- sin WebGPU */
+      .room-nogpu {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        gap: 0.9rem;
+        text-align: center;
+        padding: 2rem;
+        background: var(--void);
+        z-index: 5;
+      }
+      .room-nogpu p {
+        margin: 0;
+        max-width: 30rem;
+        color: var(--ink-2);
+        font-size: 0.92rem;
+        line-height: 1.6;
+      }
+      .room-nogpu-title {
+        font-family: "Space Grotesk", "Helvetica Neue", Arial, sans-serif;
+        font-size: 1.5rem !important;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        color: var(--ink) !important;
+      }
+      .room-nogpu code {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.9em;
+        color: var(--ink);
+      }
+    </style>
+  </body>
+</html>

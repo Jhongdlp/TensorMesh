@@ -1,0 +1,87 @@
+/* ==========================================================================
+   Overlay de Carga WebGPU - Ultra Minimalista & Pixel ML (1.65s Calibrado)
+   ========================================================================== */
+
+.gpu-loader-backdrop {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(20, 21, 24, 0.65);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 50;
+  pointer-events: none;
+  animation: gpuLoaderIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1), transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes gpuLoaderIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.gpu-loader-fade-out {
+  opacity: 0;
+  transform: scale(1.03);
+}
+
+.gpu-loader-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  background: rgba(28, 29, 31, 0.94);
+  border: 1px solid rgba(242, 239, 233, 0.18);
+  border-radius: 4px;
+  padding: 0.6rem 1rem;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.6);
+  font-family: "IBM Plex Mono", monospace;
+  color: var(--ink, #f2efe9);
+  user-select: none;
+}
+
+/* Micro-matriz de píxeles (4x6) */
+.gpu-micro-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 4.5px);
+  grid-template-rows: repeat(4, 4.5px);
+  gap: 2.5px;
+}
+
+.gpu-micro-dot {
+  width: 4.5px;
+  height: 4.5px;
+  background: rgba(242, 239, 233, 0.08);
+  border-radius: 0.5px;
+  transition: background 0.08s steps(2);
+}
+
+.gpu-micro-dot.on {
+  background: rgba(242, 239, 233, 0.45);
+}
+
+.gpu-micro-dot.hot {
+  background: #f2efe9;
+  box-shadow: 0 0 5px rgba(242, 239, 233, 0.85);
+}
+
+.gpu-micro-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.gpu-micro-label {
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: #f2efe9;
+  text-transform: uppercase;
+}
+
+.gpu-micro-sub {
+  font-size: 0.6rem;
+  letter-spacing: 0.04em;
+  color: rgba(242, 239, 233, 0.5);
+}
