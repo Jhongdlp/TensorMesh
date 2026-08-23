@@ -14,7 +14,7 @@
 [![Python](https://img.shields.io/badge/Pipeline-Python%203.14%20|%20NumPy-3776ab?style=flat-square&logo=python&logoColor=white)](https://numpy.org/)
 [![Status](https://img.shields.io/badge/Status-Production%20Ready-10b981?style=flat-square)](#)
 
-[**Live Demo**](https://embend.netlify.app) • [**Interactive Rooms**](#-interactive-3d-galleries) • [**WebGPU Engine**](#-webgpu-engine--gpu-architecture) • [**Data Pipeline**](#-data-pipeline--binary-formats) • [**UI/UX Design**](#-uiux-design--perceptual-color-science)
+[**Live Demo**](https://tensormesh.vercel.app) • [**Interactive Rooms**](#-interactive-3d-galleries) • [**WebGPU Engine**](#-webgpu-engine--gpu-architecture) • [**Data Pipeline**](#-data-pipeline--binary-formats) • [**UI/UX Design**](#-uiux-design--perceptual-color-science)
 
 ---
 
@@ -162,8 +162,8 @@ The preprocessing pipeline converts raw vectors (`.vec`) into custom contiguous 
 
 ```bash
 # Clone the repository
-git clone https://github.com/Jhongdlp/embed.git
-cd embed/web
+git clone https://github.com/Jhongdlp/TensorMesh.git
+cd TensorMesh/web
 
 # Install dependencies
 npm install
