@@ -8,6 +8,9 @@ export interface SomCopy {
   gridColor: string;
   colorTopology: string;
   colorHeight: string;
+  targetPoints: string;
+  showPoints: string;
+  hidePoints: string;
   speed: string;
   initialEta: string;
   initialSigma: string;
@@ -51,6 +54,9 @@ export const SOM_COPY: Record<"es" | "en", SomCopy> = {
     gridColor: "Color de la Red",
     colorTopology: "Topología",
     colorHeight: "Altura Z",
+    targetPoints: "Puntos Objetivo",
+    showPoints: "Mostrar",
+    hidePoints: "Solo Malla",
     speed: "Velocidad",
     initialEta: "Tasa inicial (η₀)",
     initialSigma: "Vecindad inicial (σ₀)",
@@ -92,6 +98,9 @@ export const SOM_COPY: Record<"es" | "en", SomCopy> = {
     gridColor: "Lattice Color",
     colorTopology: "Topology",
     colorHeight: "Z-Height",
+    targetPoints: "Target Points",
+    showPoints: "Show",
+    hidePoints: "Mesh Only",
     speed: "Speed",
     initialEta: "Initial Rate (η₀)",
     initialSigma: "Initial Radius (σ₀)",
@@ -130,16 +139,16 @@ export const SOM_SHAPES_I18N = {
     { name: "Esfera 3D", desc: "Superficie cerrada sin bordes. La malla debe envolver la esfera sin arrugas ni auto-intersecciones." },
     { name: "Toro (Dona)", desc: "Geometría toroidal con agujero central. Excelente para poner a prueba la topología periódica." },
     { name: "Doble Hélice", desc: "Dos filamentos entrelazados con separación continua. Exige una gran plasticidad en la red." },
-    { name: "Atractor de Lorenz", desc: "Estructura caótica en forma de mariposa. Prueba la capacidad de aproximar atractores no lineales." },
     { name: "Cubo 3D", desc: "Superficie poliédrica con aristas marcadas y vértices agudos." },
+    { name: "Atractor de Lorenz", desc: "Estructura caótica en forma de mariposa. Prueba la capacidad de aproximar atractores no lineales." },
     { name: "Plano Ondulado", desc: "Superficie 2D continua con pliegues sinusoidales armónicos." },
   ],
   en: [
     { name: "3D Sphere", desc: "Closed manifold with zero boundary. Lattice must enclose the sphere without pinching or self-intersection." },
     { name: "Torus (Donut)", desc: "Toroidal geometry with center hole. Optimal benchmark for periodic boundary topology." },
     { name: "Double Helix", desc: "Two intertwined strands with continuous gap. Demands high structural plasticity." },
-    { name: "Lorenz Attractor", desc: "Chaotic butterfly fractal manifold. Stretches the network across non-linear attractors." },
     { name: "3D Cube", desc: "Polyhedral box with sharp perpendicular edges and vertices." },
+    { name: "Lorenz Attractor", desc: "Chaotic butterfly fractal manifold. Stretches the network across non-linear attractors." },
     { name: "Wavy Plane", desc: "Continuous 2D Euclidean surface with harmonic sinusoidal ripples." },
   ],
 };

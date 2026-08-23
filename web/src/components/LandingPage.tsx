@@ -3,6 +3,7 @@ import { useAtlasLang } from "../i18n";
 import { LANDING_COPY } from "../i18n/landing";
 import Header from "./Header";
 import AuthorWidget from "./AuthorWidget";
+import Footer from "./Footer";
 
 /* La silueta de la portada no se genera: se calca.
  *
@@ -666,23 +667,10 @@ export default function LandingPage({ onExplore }: LandingPageProps) {
               );
             })}
           </ol>
-
-          <footer className="landing-rooms-foot">
-            <span>{t.footerAttrib}</span>
-            <span className="landing-rooms-links">
-              <a href="https://github.com/Jhongdlp/embed" target="_blank" rel="noopener noreferrer">
-                {t.footerSource}
-              </a>
-              <a
-                href="https://claude.ai/code/artifact/bb9b0833-4b78-4972-b79e-8bdda5e7b858"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                {t.footerPlan}
-              </a>
-            </span>
-          </footer>
         </div>
+
+        {/* Footer Editorial Pixel-Perfect estilo Creative Dev */}
+        <Footer lang={lang} onGoToTop={goToTop} />
       </section>
     </div>
   );

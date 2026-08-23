@@ -107,6 +107,11 @@ export default function Som() {
         case "KeyF": e.preventDefault(); toggleZen(); break;
         case "KeyR": e.preventDefault(); resetSimulation(); break;
         case "KeyN": e.preventDefault(); stepOnce(); break;
+        case "KeyP":
+          if (!eng) return;
+          e.preventDefault();
+          patch({ showTarget: !eng.opts.showTarget });
+          break;
       }
     };
     window.addEventListener("keydown", down);
@@ -242,6 +247,14 @@ export default function Som() {
                       onClick={() => patch({ mode: 0 })}>{t.colorTopology}</button>
               <button className={o.mode === 1 ? "on" : ""} aria-pressed={o.mode === 1}
                       onClick={() => patch({ mode: 1 })}>{t.colorHeight}</button>
+            </div>
+
+            <p className="eyebrow">{t.targetPoints}</p>
+            <div className="ctl-row" role="group" aria-label={t.targetPoints}>
+              <button className={o.showTarget ? "on" : ""} aria-pressed={o.showTarget}
+                      onClick={() => patch({ showTarget: true })}>{t.showPoints}</button>
+              <button className={!o.showTarget ? "on" : ""} aria-pressed={!o.showTarget}
+                      onClick={() => patch({ showTarget: false })}>{t.hidePoints}</button>
             </div>
 
             <hr className="side-sep" />

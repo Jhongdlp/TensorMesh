@@ -11,6 +11,9 @@ import LandingPage from "../components/LandingPage.tsx";
       name="description"
       content="TensorMesh: Galería interactiva 3D de algoritmos de inteligencia artificial, redes neuronales, optimización y estructuras matemáticas simuladas en tiempo real con WebGPU."
     />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" href="/icons/ChatGPT Image 23 ago 2026, 10_28_10.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       rel="stylesheet"
@@ -236,6 +239,8 @@ import LandingPage from "../components/LandingPage.tsx";
         height: calc(var(--u) * 1.62);
         display: block;
         flex: none;
+        object-fit: contain;
+        border-radius: 4px;
       }
 
       /* Una sola línea, grande y negra. El tracking ligeramente negativo
@@ -840,34 +845,133 @@ import LandingPage from "../components/LandingPage.tsx";
       }
       a.landing-room:hover .landing-room-action svg { transform: translateX(5px); }
 
-      /* ---- Pie ---- */
-      .landing-rooms-foot {
+      /* ==========================================================================
+         FOOTER ULTRA-MINIMALISTA (INTEGRADO CON EL FONDO DE LA WEB)
+         ========================================================================== */
+      .tensor-footer-ultra {
+        position: relative;
+        z-index: 10008;
+        width: 100%;
+        margin-top: clamp(4rem, 10vh, 8rem);
+        background-color: var(--dark, #202020);
+        background-image:
+          linear-gradient(to right, rgba(230, 230, 230, 0.03) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(230, 230, 230, 0.03) 1px, transparent 1px);
+        background-size: var(--cw) var(--ch);
+        border-top: 1px solid rgba(230, 230, 230, 0.18);
+        color: var(--light, #e6e6e6);
+        font-family: var(--mono);
+        overflow: hidden;
+      }
+
+      /* 1. Barra superior */
+      .tf-bar-top {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        flex-wrap: wrap;
-        gap: 1rem 2rem;
-        margin-top: clamp(2.5rem, 5vh, 3.5rem);
-        padding-top: 1.4rem;
-        border-top: 1px solid rgba(230, 230, 230, 0.18);
-        font-family: var(--mono);
-        font-size: 0.66rem;
+        padding: 1.1rem clamp(1.5rem, 5vw, 4rem);
+        border-bottom: 1px solid rgba(230, 230, 230, 0.12);
+        font-size: 0.68rem;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+      }
+
+      .tf-meta-left {
+        display: flex;
+        gap: 0.8rem;
+      }
+
+      .tf-muted {
+        color: rgba(230, 230, 230, 0.45);
+      }
+
+      .tf-meta-center {
+        color: rgba(230, 230, 230, 0.6);
+      }
+
+      .tf-link {
+        color: rgba(230, 230, 230, 0.75);
+        text-decoration: none;
+        transition: color 0.12s ease;
+      }
+
+      .tf-link:hover {
+        color: #ffffff;
+      }
+
+      /* 2. Hero masivo con animación de píxeles hiper-dinámica */
+      .tf-hero {
+        position: relative;
+        width: 100%;
+        min-height: clamp(160px, 24vw, 360px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-bottom: 1px solid rgba(230, 230, 230, 0.12);
+        background: transparent;
+        overflow: hidden;
+      }
+
+      .tf-canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        opacity: 0.95;
+        mix-blend-mode: screen;
+        image-rendering: pixelated;
+      }
+
+      .tf-title {
+        position: relative;
+        z-index: 2;
+        margin: 0;
+        padding: 0 1rem;
+        font-family: "Archivo Black", "Space Grotesk", sans-serif;
+        font-size: clamp(3.4rem, 14.5vw, 15rem);
+        font-weight: 900;
+        line-height: 0.82;
+        letter-spacing: -0.055em;
+        text-transform: uppercase;
+        color: var(--light, #ffffff);
+        user-select: none;
+        pointer-events: none;
+        text-shadow: 0 0 35px rgba(0, 0, 0, 0.8);
+      }
+
+      /* 3. Barra inferior de cierre */
+      .tf-bar-bottom {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1.4rem clamp(1.5rem, 5vw, 4rem);
+        font-size: 0.68rem;
         letter-spacing: 0.14em;
         text-transform: uppercase;
-        color: rgba(230, 230, 230, 0.4);
       }
 
-      .landing-rooms-links {
+      .tf-author {
         display: flex;
-        gap: 1.8rem;
+        gap: 0.6rem;
       }
 
-      .landing-rooms-links a {
-        color: rgba(230, 230, 230, 0.68);
-        text-decoration: none;
-        transition: color 0.12s linear;
+      .tf-bottom-status {
+        display: flex;
+        align-items: center;
       }
-      .landing-rooms-links a:hover { color: var(--light); }
+
+      @media (max-width: 640px) {
+        .tf-bar-top,
+        .tf-bar-bottom {
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 0.75rem;
+        }
+        .tf-meta-center {
+          display: none;
+        }
+      }
 
       /* ---- Pantallas estrechas ---- */
       @media (max-width: 1080px) {

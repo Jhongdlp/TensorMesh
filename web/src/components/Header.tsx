@@ -35,12 +35,11 @@ export default function Header({
           onClick={handleBrandClick}
           aria-label={`${t.brandFirst} ${t.brandSecond}`}
         >
-          <svg className="landing-brand-mark" viewBox="0 0 16 16" aria-hidden="true">
-            <path
-              fill="currentColor"
-              d="M0 2h5v3H2v3H0V2zm11 0h5v6h-2V5h-3V2zM2 8h3v3H2V8zm9 0h3v3h-3V8zM5 5h6v3H5V5zm0 6h6v3H5v-3zm2 3h2v2H7v-2z"
-            />
-          </svg>
+          <img
+            className="landing-brand-mark"
+            src="/icons/ChatGPT Image 23 ago 2026, 10_28_10.png"
+            alt={`${t.brandFirst}${t.brandSecond}`}
+          />
           <span className="landing-brand-text">
             {t.brandFirst}{t.brandSecond}
           </span>
