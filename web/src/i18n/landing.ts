@@ -21,9 +21,6 @@ export interface LandingCopy {
   titleLine1: string;
   titleLine2: string;
   titleLine3: string;
-  mlTag: string;
-  mlEq: string;
-  mlFoot: string;
   noteText: string;
   noteAttrib: string;
   scrollLabel: string;
@@ -34,28 +31,27 @@ export interface LandingCopy {
   footerAttrib: string;
   footerSource: string;
   footerPlan: string;
+  builtBy: string;
 }
 
 export const LANDING_COPY: Record<"es" | "en", LandingCopy> = {
   es: {
-    brandFirst: "Atlas",
-    brandSecond: "Vectorial",
+    brandFirst: "Tensor",
+    brandSecond: "Mesh",
     navEnter: "Entrar",
-    navRooms: "Salas",
-    navAlgorithm: "Algoritmo",
+    navRooms: "Galería",
+    navAlgorithm: "Algoritmos",
     navSource: "Código",
-    titleLine1: "las palabras",
-    titleLine2: "tienen",
-    titleLine3: "gravedad.",
-    mlTag: "Aprendizaje profundo, hecho navegable",
-    mlEq: "rey − hombre + mujer ≈ reina",
-    mlFoot: "coseno 0.72 en 300 dimensiones · nadie escribió esa regla",
-    noteText: "50.000 palabras colocadas por simulación de fuerzas físicas sobre su grafo de vecinos más cercanos, no por reducción de dimensiones.",
-    noteAttrib: "fastText Crawl Vectors · CC BY-SA 3.0",
-    scrollLabel: "Salas",
-    roomsTitle1: "algoritmos por los que",
-    roomsTitle2: "puedes caminar.",
-    roomsLead: "Cada sala convierte una idea del aprendizaje automático en un espacio en lugar de un diagrama. Nada aquí está prerenderizado: las fuerzas, los vectores y el descenso se ejecutan en tu propia GPU mientras los observas.",
+    builtBy: "Construido por",
+    titleLine1: "la forma",
+    titleLine2: "de la mente",
+    titleLine3: "artificial.",
+    noteText: "Un laboratorio inmersivo para explorar algoritmos de optimización, grafos de alta dimensión, redes neuronales y modelos matemáticos de IA renderizados en tiempo real en tu GPU.",
+    noteAttrib: "Cómputo en tiempo real · Laboratorio 3D",
+    scrollLabel: "Explorar galería",
+    roomsTitle1: "galería interactiva",
+    roomsTitle2: "en tres dimensiones.",
+    roomsLead: "Cada sala convierte una estructura matemática y un algoritmo de aprendizaje automático en un espacio 3D navegable. Nada está pregrabado: las físicas, los tensores y las partículas se calculan en tu GPU mientras los exploras.",
     rooms: [
       {
         id: "01",
@@ -124,29 +120,27 @@ export const LANDING_COPY: Record<"es" | "en", LandingCopy> = {
         action: "Agrupar los puntos",
       },
     ],
-    footerAttrib: "fastText Crawl Vectors · CC BY-SA 3.0",
+    footerAttrib: "Laboratorio Interactivo · WebGPU & 3D Shaders",
     footerSource: "Código fuente",
     footerPlan: "Plan técnico",
   },
   en: {
-    brandFirst: "Vector",
-    brandSecond: "Atlas",
+    brandFirst: "Tensor",
+    brandSecond: "Mesh",
     navEnter: "Enter",
-    navRooms: "Rooms",
-    navAlgorithm: "Algorithm",
+    navRooms: "Gallery",
+    navAlgorithm: "Algorithms",
     navSource: "Source",
-    titleLine1: "words",
-    titleLine2: "have",
-    titleLine3: "gravity.",
-    mlTag: "Deep learning, made navigable",
-    mlEq: "king − man + woman ≈ queen",
-    mlFoot: "cosine 0.72 across 300 dimensions · nobody wrote that rule",
-    noteText: "50,000 words placed by simulating physical forces on their nearest-neighbor graph, not by dimension reduction.",
-    noteAttrib: "fastText Crawl Vectors · CC BY-SA 3.0",
-    scrollLabel: "Scroll",
-    roomsTitle1: "algorithms you can",
-    roomsTitle2: "walk through.",
-    roomsLead: "Each room turns one idea out of machine learning into a place instead of a diagram. Nothing here is pre-rendered: the forces, the vectors and the descent all run on your own GPU while you look at them.",
+    builtBy: "Built by",
+    titleLine1: "the shape",
+    titleLine2: "of artificial",
+    titleLine3: "mind.",
+    noteText: "An immersive gallery to explore optimization algorithms, high-dimensional graphs, neural structures, and mathematical models simulated live on your GPU.",
+    noteAttrib: "Real-time Compute · 3D Lab",
+    scrollLabel: "Explore gallery",
+    roomsTitle1: "interactive gallery",
+    roomsTitle2: "in three dimensions.",
+    roomsLead: "Each room turns a mathematical structure and machine learning algorithm into a navigable 3D space. Nothing is pre-rendered: physics, tensors, and particles compute live on your GPU.",
     rooms: [
       {
         id: "01",
@@ -215,7 +209,7 @@ export const LANDING_COPY: Record<"es" | "en", LandingCopy> = {
         action: "Cluster the points",
       },
     ],
-    footerAttrib: "fastText Crawl Vectors · CC BY-SA 3.0",
+    footerAttrib: "Interactive Lab · WebGPU & 3D Shaders",
     footerSource: "Source",
     footerPlan: "Technical plan",
   },

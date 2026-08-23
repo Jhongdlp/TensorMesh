@@ -42,8 +42,7 @@ export default function Header({
             />
           </svg>
           <span className="landing-brand-text">
-            <span className="brand-word-1">{t.brandFirst}</span>
-            <span className="brand-word-2">{t.brandSecond}</span>
+            {t.brandFirst}{t.brandSecond}
           </span>
         </a>
 

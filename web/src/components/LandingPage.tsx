@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useAtlasLang } from "../i18n";
 import { LANDING_COPY } from "../i18n/landing";
 import Header from "./Header";
+import AuthorWidget from "./AuthorWidget";
 
 /* La silueta de la portada no se genera: se calca.
  *
@@ -539,6 +540,9 @@ export default function LandingPage({ onExplore }: LandingPageProps) {
         isScrolled={isScrolled}
       />
 
+      {/* Widget de Autor (Jhongdlp) en esquina inferior derecha */}
+      <AuthorWidget lang={lang} />
+
       {/* Rejilla de píxeles de la portada */}
       <div
         className="landing-grid-bg"
@@ -564,12 +568,6 @@ export default function LandingPage({ onExplore }: LandingPageProps) {
           <br />
           {t.titleLine3}
         </h1>
-
-        <div className="landing-ml">
-          <p className="landing-ml-tag">{t.mlTag}</p>
-          <p className="landing-ml-eq">{t.mlEq}</p>
-          <p className="landing-ml-foot">{t.mlFoot}</p>
-        </div>
 
         <div className="landing-note">
           <p>{t.noteText}</p>
