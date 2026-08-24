@@ -647,6 +647,15 @@ Detalles que no son obvios:
   ventana y recortar un 16:9 después lo parte. Con `SHOT_GPU=1` el navegador
   levanta WebGPU sobre la Vega y la captura sale del motor bueno, no del
   respaldo WebGL.
+- **La miniatura no usa los valores de casa del render** (`SHOT_TUNE`, que
+  mueve los mandos de `Controls.tsx` como los movería una mano). Los de casa
+  están pensados para que la sala se pueda *usar*: punto de 2 px, que es lo que
+  se acierta con el ratón, y malla contenida para que no tape los puntos. Una
+  miniatura no se usa: se mira a 200 px de ancho y de un vistazo, y ahí lo que
+  hay que ver es la nebulosa. `minPx=1, edgeBright=1.05, minEdgePx=0.4` cambia
+  el punteado por una malla encendida. El desplegable de simulación hay que
+  abrirlo antes —los `input` no están en el DOM plegados— y volver a cerrarlo
+  antes de disparar.
 - **`og:image` absoluta, con `width`/`height` y por debajo de 300 KB.** Las
   rutas relativas no las resuelve nadie, sin medidas varios clientes se rinden
   antes de pedirla, y WhatsApp deja de mostrar la miniatura al pasarse de peso.

@@ -55,11 +55,11 @@
         "machine learning interactivo"
       ],
       "kicker": "LABORATORIO 3D · WEBGPU",
-      "ogLines": ["la forma", "de la mente", "artificial."],
       "ogNote": "Seis salas donde los algoritmos de la IA se calculan en vivo, en tu GPU.",
-      "preview": "previews/nebula-ui.jpg",
+      "preview": "previews/nebula-ui-en.jpg",
       "layout": "ui",
-      "ogStamp": "50.000 palabras en 3D · WebGPU"
+      "ogLines": ["the shape", "of artificial", "mind."],
+      "ogStamp": "50,000 words in 3D · WebGPU"
     },
     {
       "path": "/embedding-nebula",

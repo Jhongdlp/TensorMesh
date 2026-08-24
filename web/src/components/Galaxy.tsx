@@ -42,6 +42,11 @@ const COPY = {
         hint: "pasa el ratón sobre un punto · clic para abrirlo",
         hintOut: "clic en el vacío o esc para soltarla",
         shut: "cerrar", esc: "esc", drop: "soltar",
+        // Estos dos se quedaron escritos a mano en el JSX y en inglés salían
+        // en español — y uno de los dos es la atribución, que es el único
+        // requisito legal del proyecto: tiene que leerse en el idioma en el
+        // que se está leyendo todo lo demás.
+        back: "Volver a Inicio", vecs: "vectores",
         held: (w: string) => `mirando «${w}»`,
         heldPath: (a: string, b: string) => `camino «${a}» → «${b}»`,
         heldGroup: (k: number) => `${k} palabras resaltadas`,
@@ -140,6 +145,7 @@ const COPY = {
         hint: "hover a dot · click to open it",
         hintOut: "click empty space or press esc to let it go",
         shut: "close", esc: "esc", drop: "let go",
+        back: "Back to home", vecs: "vectors",
         held: (w: string) => `looking at “${w}”`,
         heldPath: (a: string, b: string) => `path “${a}” → “${b}”`,
         heldGroup: (k: number) => `${k} words highlighted`,
@@ -1258,7 +1264,7 @@ export default function GalaxyView({ lang: initial = "es", initialView }: { lang
             <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5">
               <path d="M19 12H5M12 19l-7-7 7-7" />
             </svg>
-            <span>Volver a Inicio</span>
+            <span>{t.back}</span>
           </a>
           {/* El botón ancho del cajón abre la **guía**, no la presentación: es
               el único sitio con espacio para escribir la palabra, y la
@@ -1587,7 +1593,7 @@ export default function GalaxyView({ lang: initial = "es", initialView }: { lang
 
       {/* CC BY-SA 3.0 exige atribución: es el único requisito legal del proyecto */}
       <p className="attrib">
-        vectores{" "}
+        {t.vecs}{" "}
         <a href="https://fasttext.cc/docs/en/crawl-vectors.html">fastText</a>{" "}
         · Facebook Research · CC BY-SA 3.0
       </p>

@@ -150,6 +150,58 @@ try {
   await cmd("Page.navigate", { url: URL_ });
   await sleep(WAIT);
 
+  // Los mandos de render, movidos como los movería una mano: `SHOT_TUNE` es
+  // una lista `clave=valor` con las claves de `Controls.tsx` (`minPx`,
+  // `edgeBright`, `minEdgePx`, `range`). Los valores de casa están pensados
+  // para que la sala se pueda *usar* —punto de 2 px que se acierta con el
+  // ratón, malla contenida para no tapar los puntos—; una miniatura no se
+  // usa, se mira de lejos y a 200 px de ancho, y ahí lo que cuenta es la
+  // nebulosa: punto pequeño y aristas encendidas.
+  //
+  // Hay que abrir el desplegable de simulación antes: los `input` no existen
+  // en el DOM mientras está plegado. Y se vuelve a cerrar antes de disparar,
+  // porque el cajón de la foto es el que ve quien entra, no el de quien está
+  // toqueteando los mandos.
+  const tune = process.env.SHOT_TUNE;
+  if (tune) {
+    const { result } = await cmd("Runtime.evaluate", {
+      awaitPromise: true,
+      returnByValue: true,
+      expression: `(async () => {
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+        const btn = [...document.querySelectorAll("button")]
+          .find((b) => /simulaci|simulation/i.test(b.textContent || ""));
+        if (!btn) return "no encuentro el desplegable de simulación";
+        btn.click();
+        await sleep(400);
+
+        // Los <input> son controlados por React: asignar .value no dispara
+        // nada. Hay que llamar al setter nativo y lanzar el evento a mano.
+        const set = Object.getOwnPropertyDescriptor(
+          window.HTMLInputElement.prototype, "value").set;
+        const done = [];
+        for (const pair of ${JSON.stringify(tune)}.split(",")) {
+          const [key, value] = pair.split("=").map((t) => t.trim());
+          const label = { minPx: "punto px", edgeBright: "aristas",
+                          minEdgePx: "arista mín", range: "rango" }[key];
+          const row = [...document.querySelectorAll(".ctl")]
+            .find((l) => l.querySelector("span")?.textContent?.trim() === label);
+          const input = row?.querySelector('input[type="range"]');
+          if (!input) { done.push(key + ":no está"); continue; }
+          set.call(input, String(value));
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          await sleep(120);
+          done.push(key + "=" + input.value);
+        }
+        await sleep(300);
+        btn.click();
+        return done.join(" ");
+      })()`,
+    });
+    console.log(`  mandos → ${result.value}`);
+    await sleep(1200);
+  }
+
   // El encuadre de arranque es el percentil 95 sobre la ventana, y una ventana
   // de 1,91:1 recorta más alto que ancho: la galaxia se sale por arriba y por
   // abajo. `SHOT_WHEEL` da la rueda hacia atrás las veces que haga falta.
