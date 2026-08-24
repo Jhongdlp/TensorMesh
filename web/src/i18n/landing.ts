@@ -31,6 +31,8 @@ export interface LandingCopy {
   footerAttrib: string;
   footerSource: string;
   footerPlan: string;
+  /** Volver arriba, en el pie. */
+  footerTop: string;
   builtBy: string;
 }
 
@@ -123,6 +125,7 @@ export const LANDING_COPY: Record<"es" | "en", LandingCopy> = {
     footerAttrib: "Laboratorio Interactivo · WebGPU & 3D Shaders",
     footerSource: "Código fuente",
     footerPlan: "Plan técnico",
+    footerTop: "Arriba",
   },
   en: {
     brandFirst: "Tensor",
@@ -212,5 +215,6 @@ export const LANDING_COPY: Record<"es" | "en", LandingCopy> = {
     footerAttrib: "Interactive Lab · WebGPU & 3D Shaders",
     footerSource: "Source",
     footerPlan: "Technical plan",
+    footerTop: "Top",
   },
 };

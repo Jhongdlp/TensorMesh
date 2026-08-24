@@ -100,6 +100,158 @@ function buildCells(): Cell[] {
 
 const CELLS = buildCells();
 
+/* ------------------------------------------------------------------ la costura */
+
+/* El índice de salas no *empieza*: la portada se cae encima de él.
+ *
+ * Estas filas son la continuación literal de la última del MASK: la masa
+ * clara del hero sigue bajando y se deshace en dither determinista hasta
+ * apagarse dentro del índice. Antes había aquí una barra blanca sólida de 14
+ * px — exactamente la línea de frontera que este diseño no quiere: decía
+ * «hasta aquí llegó la portada» justo donde hay que decir lo contrario.
+ *
+ * Es el mismo material: celda de `--cw` x `--ch`, `#e6e6e6` plano, cero radio
+ * y dígitos de buscaminas con la misma regla (sólo en celda clara que toca
+ * oscuro). No hay frontera, hay degradado de píxeles.
+ *
+ * Dos reglas gobiernan el dibujo, y las dos están medidas contra el PNG del
+ * pliegue —`density()` decide *cuánta* masa queda en cada fila y `mass`/`w`
+ * deciden *dónde* puede quedar—. Lo que hace que se lea como una masa
+ * desmoronándose y no como confeti es que la primera fila sale al 97% de
+ * densidad: no se ve dónde acaba la portada y empieza la costura. */
+
+/** Filas de la costura de escritorio: nace de la última fila del MASK, que es
+ *  la isla clara de abajo a la derecha donde vive el párrafo de la portada. */
+const SEAM_ROWS = 10;
+/** La de móvil arranca de una fila entera —allí no hay silueta, el fondo del
+ *  hero es claro de borde a borde— y es más corta: el contenido empieza
+ *  enseguida y no hay medio viewport de aire que gastar. */
+const SEAM_ROWS_FLAT = 6;
+
+/** Hash determinista por celda. El dither tiene que ser el mismo en cada
+ *  carga: si cambia entre visitas, la silueta deja de ser un dibujo.
+ *
+ *  Es un mezclador entero y **no** el `fract(sin(dot(...)) * 43758.5)` de
+ *  toda la vida: ése está correlacionado entre filas consecutivas y la
+ *  costura salía en barras verticales —las mismas columnas sobreviviendo
+ *  ocho filas seguidas— en vez de en dither. */
+function hash(a: number, b: number): number {
+  let h = (Math.imul(a | 0, 374761393) + Math.imul(b | 0, 668265263)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177) | 0;
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+/** Qué fracción de la masa queda encendida en la fila `r`.
+ *
+ *  Coseno alzado, no una recta ni una potencia: arranca casi plano —la fila
+ *  de debajo del MASK tiene que leerse como la misma masa, o la costura
+ *  empieza con un escalón—, cae más rápido por el medio y **aterriza en cero
+ *  con pendiente cero**. Una recta se lee como trama de imprenta y una
+ *  potencia corta la última fila en seco. */
+function density(r: number, rows: number): number {
+  return (1 + Math.cos(Math.PI * Math.min(1, (r + 1) / rows))) / 2;
+}
+
+interface SeamCell {
+  r: number;
+  c: number;
+  /** Vecinos oscuros, para el dígito de buscaminas. */
+  n: number;
+  /** Retardo de entrada, en ms. */
+  d: number;
+  /** Parpadeo de brasa: sólo unas pocas celdas de la frontera. */
+  flick: boolean;
+}
+
+function buildSeam(seed: string, rows: number): SeamCell[] {
+  /* Sólo desprende masa lo que *es* masa: una columna clara con al menos una
+   * vecina clara. Los dos píxeles sueltos que la última fila del MASK deja en
+   * mitad del ancho —el dither de su propia frontera— sembraban sendos
+   * goteros que bajaban por el centro de la sección, que es exactamente donde
+   * se escribe el titular: texto blanco sobre píxeles blancos. Y además
+   * mentían: un píxel aislado no tiene nada que soltar. */
+  const mass: boolean[] = [];
+  for (let c = 0; c < COLS; c++) {
+    mass.push(
+      seed[c] === "1" &&
+        ((c > 0 && seed[c - 1] === "1") || (c < COLS - 1 && seed[c + 1] === "1")),
+    );
+  }
+
+  /* Peso por columna: la columna hereda la masa que tiene justo encima, y las
+   * dos vecinas heredan una parte. Ese `0.42` es lo que hace que la mancha se
+   * **ensanche** un poco al caer, como se ensancha un montón que se
+   * desmorona; sin él la costura baja en columna recta y parece recortada. */
+  const w: number[] = [];
+  for (let c = 0; c < COLS; c++) {
+    w.push(
+      mass[c] ? 1 : (c > 0 && mass[c - 1]) || (c < COLS - 1 && mass[c + 1]) ? 0.42 : 0,
+    );
+  }
+
+  /* Umbral por celda contra el perfil de densidad, y no una cadena en la que
+   * cada fila se come a la anterior: la cadena multiplica probabilidades, así
+   * que el perfil real no es el que se pide —se apagaba entera en cuatro
+   * filas de diez— y además arrastra la estructura de la fila de arriba. */
+  const grid: string[] = [];
+  for (let r = 0; r < rows; r++) {
+    const d = density(r, rows);
+    let row = "";
+    for (let c = 0; c < COLS; c++) row += hash(r, c) < d * w[c] ? "1" : "0";
+    grid.push(row);
+  }
+
+  /* La fila semilla entra en el cálculo de vecindad y luego se descarta: es
+   * la que ya dibuja la portada, y sin ella los dígitos de la primera fila
+   * contarían como oscuro un vecino que está encendido justo encima. */
+  const withSeed = [seed, ...grid];
+  const out: SeamCell[] = [];
+  for (let r = 1; r < withSeed.length; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (withSeed[r][c] !== "1") continue;
+      const n = neighbours(withSeed, r, c);
+      const rr = r - 1;
+      /* Barrido de arriba abajo con temblor por celda. Un retardo puro por
+       * columna leería como cortinilla lateral, y lo que cae es la fila. */
+      const d = Math.round(rr * 38 + (c % 12) * 7 + hash(c, rr) * 46);
+      out.push({ r: rr, c, n, d, flick: n > 0 && hash(c * 3, rr * 5) < 0.22 });
+    }
+  }
+  return out;
+}
+
+const SEAM = buildSeam(MASK[ROWS - 1], SEAM_ROWS);
+const SEAM_FLAT = buildSeam("1".repeat(COLS), SEAM_ROWS_FLAT);
+
+function Seam({ cells, rows, variant }: { cells: SeamCell[]; rows: number; variant: string }) {
+  return (
+    <div
+      className={variant}
+      aria-hidden="true"
+      style={{
+        ["--seam-rows" as string]: String(rows),
+        gridTemplateColumns: `repeat(${COLS}, 1fr)`,
+        gridTemplateRows: `repeat(${rows}, 1fr)`,
+      }}
+    >
+      {cells.map((cell) => (
+        <div
+          key={`${cell.r}-${cell.c}`}
+          className={cell.flick ? "scell scell-flick" : "scell"}
+          style={{
+            gridColumn: cell.c + 1,
+            gridRow: cell.r + 1,
+            transitionDelay: `${cell.d}ms`,
+            animationDelay: `${cell.d + 900 + Math.round(hash(cell.r, cell.c) * 5200)}ms`,
+          }}
+        >
+          {cell.n > 0 && <span className="gnum">{cell.n}</span>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* ------------------------------------------------------------------ glifos con motion algorítmico */
 
 function NebulaMotionGlyph({ isHovered }: { isHovered: boolean }) {
@@ -450,11 +602,9 @@ export default function LandingPage({ onExplore }: LandingPageProps) {
   const [hoveredRoom, setHoveredRoom] = useState<string | null>(null);
   const [isScrolled, setIsScrolled] = useState(false);
   
-  const glowRef = useRef<HTMLDivElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const roomsRef = useRef<HTMLElement | null>(null);
   const innerRef = useRef<HTMLDivElement | null>(null);
-  const glow = useRef({ near: 0 });
 
   useEffect(() => {
     const el = rootRef.current;
@@ -498,6 +648,26 @@ export default function LandingPage({ onExplore }: LandingPageProps) {
     return () => io.disconnect();
   }, []);
 
+  /* La sección tiene su propio disparo, y antes que el del contenido: lo que
+   * se anima aquí es la costura, que está pegada al borde superior. Con el
+   * observador del `inner` —que espera a un 18% de margen negativo— la masa
+   * clara ya llevaba media pantalla dentro cuando le tocaba encenderse, y
+   * encenderse a la vista es no haber entrado. */
+  useEffect(() => {
+    const el = roomsRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((e) => e.isIntersecting)) return;
+        el.classList.add("is-in");
+        io.disconnect();
+      },
+      { rootMargin: "0px 0px -8% 0px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
   const goToRooms = () => {
     roomsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
@@ -506,25 +676,10 @@ export default function LandingPage({ onExplore }: LandingPageProps) {
     rootRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  useEffect(() => {
-    const move = (e: PointerEvent) => {
-      const g = glowRef.current;
-      if (!g) return;
-      g.style.transform = `translate(${e.clientX}px, ${e.clientY}px)`;
-      glow.current.near = 1;
-      g.style.opacity = "1";
-    };
-    const leave = () => {
-      glow.current.near = 0;
-      if (glowRef.current) glowRef.current.style.opacity = "0";
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerleave", leave);
-    return () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerleave", leave);
-    };
-  }, []);
+  /* Aquí vivía el resplandor azul que seguía al puntero, y ya no vive nadie.
+   * Era el único color de toda la portada —dos masas planas, tinta negra y un
+   * halo rgb(0,9,79)— y no lo pedía nada del dibujo: la silueta se sostiene
+   * sola. Fuera él, fuera el `pointermove` global que lo movía. */
 
   const handleExploreClick = () => {
     setTransitioning(true);
@@ -559,8 +714,6 @@ export default function LandingPage({ onExplore }: LandingPageProps) {
         ))}
       </div>
 
-      <div ref={glowRef} className="landing-glow" aria-hidden="true" />
-
       <div className="landing-overlay-ui">
         <h1 className="landing-title">
           {t.titleLine1}
@@ -587,12 +740,11 @@ export default function LandingPage({ onExplore }: LandingPageProps) {
           EL ÍNDICE DE SALAS: MISMO MATERIAL, MINIMALISMO Y CUADRADOS
           --------------------------------------------------------------- */}
       <section className="landing-rooms" ref={roomsRef}>
-        {/* Línea de cuadrados blancos separadora */}
-        <div className="landing-pixel-separator" aria-hidden="true">
-          {Array.from({ length: COLS }).map((_, i) => (
-            <span key={i} className="pixel-sep-cell" />
-          ))}
-        </div>
+        {/* El fondo es **la masa oscura de la portada**, sin más: el mismo
+            #202020 plano, sin rejilla y sin resplandor. Lo único que ocurre
+            encima es que la masa clara se cae dentro. */}
+        <Seam cells={SEAM} rows={SEAM_ROWS} variant="landing-seam" />
+        <Seam cells={SEAM_FLAT} rows={SEAM_ROWS_FLAT} variant="landing-seam-flat" />
 
         <div className="landing-rooms-inner" ref={innerRef}>
           <header className="landing-rooms-head">
