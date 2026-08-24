@@ -92,7 +92,7 @@ export default function Footer({ lang, onGoToTop }: FooterProps) {
         <nav className="tf-acts">
           <a
             className="tf-link"
-            href="https://github.com/Jhongdlp/embed"
+            href="https://github.com/Jhongdlp/TensorMesh"
             target="_blank"
             rel="noopener noreferrer"
           >
