@@ -35,9 +35,18 @@ export default function Header({
           onClick={handleBrandClick}
           aria-label={`${t.brandFirst} ${t.brandSecond}`}
         >
+          {/* 256 px y no el original de 1254: la marca se dibuja a 26-40 px,
+              así que el archivo grande eran 530 KB en la ruta crítica de la
+              portada para no verse. `width`/`height` van puestos aunque el CSS
+              mande, que es lo que evita el salto de maquetación mientras la
+              imagen viaja. */}
           <img
             className="landing-brand-mark"
-            src="/icons/ChatGPT Image 23 ago 2026, 10_28_10.png"
+            src="/icons/tensormesh-mark.png"
+            width={256}
+            height={256}
+            decoding="async"
+            fetchPriority="high"
             alt={`${t.brandFirst}${t.brandSecond}`}
           />
           <span className="landing-brand-text">

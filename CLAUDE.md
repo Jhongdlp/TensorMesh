@@ -46,6 +46,8 @@ python3 pipeline/preview.py  es          # PNG offline, sin navegador
 python3 pipeline/tune.py     es kr=0.006 epochs=1200   # sólo etapa 06 sobre _graph.npz
 python3 pipeline/recolor.py  es          # sólo etapa 05 (comunidades) + reempaquetado
 python3 pipeline/export_fixture.py es    # regenera data/fixture/ para los tests WGSL
+python3 pipeline/og.py                   # tarjetas de enlace 1200x630 → web/public/og/
+python3 pipeline/og.py /hnsw             # sólo una
 ```
 
 `tune.py` y `recolor.py` existen porque el kNN y la poda son lo caro: reutilizan
@@ -56,11 +58,12 @@ python3 pipeline/export_fixture.py es    # regenera data/fixture/ para los tests
 ```bash
 npm run dev            # astro dev
 npm run build          # astro build → dist/
-npm test               # check + unit + physics + render
+npm test               # check + unit + physics + render + descent + seo
 npm run check          # tsc sobre src/galaxy/**/*.ts y src/components/**/*.tsx
 npm run test:physics   # node test/physics.mjs
 npm run test:render    # node test/render.mjs
 node test/unit.mjs es  # lógica pura, sin GPU, < 1 s
+npm run test:seo       # build + node test/seo.mjs (metadatos y tarjetas, sin GPU)
 ```
 
 Test individual con argumentos (los runners son scripts, no un framework):
@@ -602,6 +605,55 @@ antes con `DESC_FRAMES`. Chrome en esta máquina cae al respaldo WebGL —donde
 estos shaders no existen—, así que el estado convergido **sólo** se puede ver
 por Dawn.
 
+## Lo que se ve sin abrir la web
+
+El HTML que sale del build tiene el `<body>` **vacío**: la portada y las seis
+salas son islas `client:only`. Un navegador lo rellena en 200 ms; el raspador de
+tarjetas de WhatsApp, GPTBot, ClaudeBot, PerplexityBot y cualquier lector de
+texto, no. Todo lo que este sitio puede *decir* sin ejecutarse vive en cuatro
+sitios y **ninguno de los cuatro escribe su propio texto**:
+
+```
+src/seo.json          la fuente única: dominio, títulos, descripciones, temas
+├── components/Seo.astro    <head>: canonical, OG, Twitter, JSON-LD, manifest
+├── components/SeoBody.astro <h1> para lector de pantalla + alternativa <noscript>
+├── pages/{sitemap.xml,robots.txt,llms.txt}.ts   endpoints, no archivos en public/
+└── pipeline/og.py           las tarjetas 1200x630 de public/og/
+```
+
+Está en **JSON y no en un `.ts`** porque el quinto lector es Python. Y está en
+un solo archivo porque el fallo que evita no se ve en la web: se ve tres días
+después, en el móvil de quien recibió el enlace, cuando Facebook ya cacheó una
+tarjeta que dice el título viejo.
+
+Detalles que no son obvios:
+
+- **La tarjeta es un JPEG, no la página.** Ningún raspador ejecuta WebGPU, así
+  que la miniatura del enlace es una composición offline: la captura de
+  `public/previews/` recortada, un velo que se abre de izquierda a derecha
+  —degradado por columnas, no una caja: un borde recto se lee como recorte mal
+  hecho— y encima la misma tipografía de la web. `zoom`/`focus` por página
+  existen porque MCTS y K-Means tienen el sujeto pequeño y centrado, justo
+  debajo del titular.
+- **`og:image` absoluta, con `width`/`height` y por debajo de 300 KB.** Las
+  rutas relativas no las resuelve nadie, sin medidas varios clientes se rinden
+  antes de pedirla, y WhatsApp deja de mostrar la miniatura al pasarse de peso.
+  Las tres cosas las comprueba `test/seo.mjs` sobre el `dist/` real.
+- **`/data/` va cerrado en `robots.txt`.** Son 17 MB de int8 sin nada que
+  indexar y todo el presupuesto de rastreo que gastar.
+- **Los rastreadores de IA entran a propósito**, nombrados uno a uno, y
+  `/llms.txt` les cuenta en texto plano lo que el canvas no puede contarles.
+  Es lo que separa «TensorMesh es una web de IA» de una descripción correcta.
+- **El `<h1>` de las salas es `.sr-only`.** No había ninguno: el título de la
+  sala es un canvas y los únicos `<h2>` aparecen al seleccionar algo. Va oculto
+  porque en pantalla taparía lo que hay que mirar, dice literalmente lo mismo
+  que el `<title>` —que es lo que lo separa de un texto oculto— y de paso el
+  lector de pantalla deja de entrar a la sala sin saber dónde está.
+- **Las rutas viejas en español están vacías.** `Astro.redirect` en sitio
+  estático **no renderiza la plantilla**: escribe su propia página de 329 bytes.
+  `galaxia.astro` arrastraba 2.100 líneas de la sala entera que no llegaban al
+  build. El 301 de verdad lo dan `netlify.toml` y `web/vercel.json`.
+
 ## Layouts duplicados (lo que se rompe en silencio)
 
 Tres sitios describen los mismos bytes y **no hay tipo compartido entre ellos**:
@@ -619,6 +671,11 @@ Tres sitios describen los mismos bytes y **no hay tipo compartido entre ellos**:
 | Uniform del caminante (128 B) | `rooms/descent/engine.ts:writeWalker` | `rooms/descent/render.wgsl:Uni`, `test/descent.mjs` |
 | Encuadre y ángulo de la sala | `rooms/descent/engine.ts` (`PHI_RELIEF`, `radius·0,95`) | `test/descent.mjs:camera` |
 | Dominio y altura del campo | `rooms/descent/field.wgsl` | `rooms/descent/field.mjs` (encuadre y siembra) |
+
+Los metadatos **ya no se duplican**: `web/src/seo.json` es la fuente única de
+`Seo.astro`, `SeoBody.astro`, los endpoints de `sitemap.xml`/`robots.txt`/
+`llms.txt` y `pipeline/og.py`. Si añades una página, empieza por ahí: sin su
+entrada, `<Seo path="...">` aborta el build en vez de publicar una página muda.
 
 `perspective`/`lookAt`/`multiply` viven en `test/mat.mjs` y el codificador PNG en
 `test/png.mjs`: los comparten `render.mjs` y `descent.mjs`. Siguen siendo un

@@ -2,3 +2,40 @@
   base = "web"
   publish = "dist"
   command = "npm run build"
+
+# Las rutas viejas en español siguen recibiendo visitas y enlaces compartidos.
+# El 301 de servidor es el bueno; la página `meta refresh` que genera Astro es
+# sólo la red por debajo para cualquier sitio que sirva el `dist/` a pelo.
+[[redirects]]
+  from = "/galaxia"
+  to = "/embedding-nebula"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/descenso"
+  to = "/gradient-descent"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/mapas-autoorganizados"
+  to = "/self-organizing-maps"
+  status = 301
+  force = true
+
+# Las tarjetas de enlace las vuelve a pedir cada red social por su cuenta y las
+# cachea meses; un `max-age` corto en origen y un `s-maxage` largo en el CDN
+# deja republicar una tarjeta corregida sin esperar a que caduque en nadie.
+[[headers]]
+  for = "/og/*"
+  [headers.values]
+    Cache-Control = "public, max-age=600, s-maxage=86400, stale-while-revalidate=604800"
+
+# Los binarios del atlas: inmutables y fuera del índice. Son 17 MB de int8 que
+# no responden a ninguna búsqueda.
+[[headers]]
+  for = "/data/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+    X-Robots-Tag = "noindex"

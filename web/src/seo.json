@@ -1,0 +1,219 @@
+{
+  "_comment": [
+    "Fuente única de los metadatos de la web. Lo leen DOS sitios y por eso es",
+    "JSON y no un .ts: `src/components/Seo.astro` (cabecera de cada página) y",
+    "`pipeline/og.py` (las tarjetas 1200x630 que se ven al compartir el enlace).",
+    "Si el título de una sala vive en dos archivos, uno de los dos se queda",
+    "viejo y nadie se entera hasta que alguien pega el enlace en WhatsApp.",
+    "",
+    "`ogTitle`/`ogLines` es lo que se dibuja EN la tarjeta y no siempre coincide",
+    "con `title`: en la tarjeta cabe menos y no hace falta repetir la marca,",
+    "que ya va impresa arriba a la izquierda."
+  ],
+
+  "site": {
+    "url": "https://tensormesh.vercel.app",
+    "name": "TensorMesh",
+    "tagline": "La forma de la mente artificial",
+    "lang": "es",
+    "locale": "es_ES",
+    "altLocale": "en_US",
+    "themeColor": "#1C1D1F",
+    "twitter": "@jhongdlp",
+    "repo": "https://github.com/Jhongdlp/embed",
+    "author": {
+      "name": "Jhon Guadalupe",
+      "alternateName": "Jhongdlp",
+      "url": "https://jhongdlp.com",
+      "sameAs": [
+        "https://github.com/Jhongdlp",
+        "https://x.com/jhongdlp",
+        "https://www.linkedin.com/in/jhon-guadalupe",
+        "https://instagram.com/jhongdlp.dev"
+      ]
+    }
+  },
+
+  "pages": [
+    {
+      "path": "/",
+      "file": "index.astro",
+      "type": "website",
+      "title": "TensorMesh · Algoritmos de IA en 3D con WebGPU",
+      "description": "Seis laboratorios 3D en tiempo real: embeddings, descenso de gradiente, HNSW, MCTS, K-Means y mapas de Kohonen, simulados en tu GPU con WebGPU.",
+      "keywords": [
+        "visualización de algoritmos",
+        "inteligencia artificial en 3D",
+        "WebGPU",
+        "embeddings",
+        "machine learning interactivo"
+      ],
+      "kicker": "LABORATORIO 3D · WEBGPU",
+      "ogLines": ["la forma", "de la mente", "artificial."],
+      "ogNote": "Seis salas donde los algoritmos de la IA se calculan en vivo, en tu GPU.",
+      "preview": "previews/nebula-es.png",
+      "zoom": 1.5,
+      "focus": 0.3
+    },
+    {
+      "path": "/embedding-nebula",
+      "file": "embedding-nebula.astro",
+      "type": "article",
+      "room": "01",
+      "title": "Nebulosa de Embeddings · 50.000 palabras en 3D",
+      "description": "Galaxia navegable de embeddings fastText: 50.000 palabras por idioma colocadas por simulación de fuerzas sobre su grafo kNN. Toda similitud se mide en 300D.",
+      "keywords": [
+        "embeddings",
+        "word2vec",
+        "fastText",
+        "espacio vectorial 3D",
+        "grafo kNN",
+        "similitud coseno"
+      ],
+      "kicker": "SALA 01 · EMBEDDINGS",
+      "ogLines": ["Nebulosa de", "Embeddings"],
+      "ogNote": "50.000 palabras colocadas por muelles sobre su grafo de vecinos, no por PCA.",
+      "preview": "previews/nebula-es.png",
+      "focus": 0.56,
+      "about": ["Word embedding", "Nearest neighbor search", "Force-directed graph drawing"]
+    },
+    {
+      "path": "/gradient-descent",
+      "file": "gradient-descent.astro",
+      "type": "article",
+      "room": "02",
+      "title": "Descenso de Gradiente en 3D · SGD, Momentum y Adam",
+      "description": "Miles de caminantes bajando a la vez por cinco superficies clásicas (Rosenbrock, Himmelblau, silla). SGD, Momentum y Adam comparados paso a paso en WebGPU.",
+      "keywords": [
+        "descenso de gradiente",
+        "gradient descent",
+        "Adam optimizer",
+        "Rosenbrock",
+        "optimización",
+        "superficie de pérdida"
+      ],
+      "kicker": "SALA 02 · OPTIMIZACIÓN",
+      "ogLines": ["Descenso", "de Gradiente"],
+      "ogNote": "Diez mil caminantes soltados a la vez sobre la superficie de Rosenbrock.",
+      "preview": "previews/descent.png",
+      "zoom": 1.06,
+      "focus": 0.58,
+      "about": ["Gradient descent", "Stochastic gradient descent", "Mathematical optimization"]
+    },
+    {
+      "path": "/self-organizing-maps",
+      "file": "self-organizing-maps.astro",
+      "type": "article",
+      "room": "03",
+      "title": "Mapas Autoorganizados de Kohonen en 3D",
+      "description": "Redes neuronales de Kohonen dibujadas como mallas elásticas que aprenden la forma de una nube de puntos y la envuelven, paso a paso y sobre compute shaders.",
+      "keywords": [
+        "mapas autoorganizados",
+        "self-organizing map",
+        "Kohonen",
+        "red neuronal no supervisada",
+        "topología"
+      ],
+      "kicker": "SALA 03 · KOHONEN",
+      "ogLines": ["Mapas", "Autoorganizados"],
+      "ogNote": "Una malla neuronal que se estira hasta envolver la nube que está aprendiendo.",
+      "preview": "previews/som.png",
+      "zoom": 1.16,
+      "focus": 0.64,
+      "about": ["Self-organizing map", "Unsupervised learning", "Artificial neural network"]
+    },
+    {
+      "path": "/hnsw",
+      "file": "hnsw.astro",
+      "type": "article",
+      "room": "04",
+      "title": "Búsqueda Vectorial HNSW en 3D · Cómo recupera un RAG",
+      "description": "El índice de las bases de datos vectoriales por dentro: capas jerárquicas, saltos voraces y descenso hasta el vecino más cercano, animado sobre tu GPU.",
+      "keywords": [
+        "HNSW",
+        "búsqueda vectorial",
+        "base de datos vectorial",
+        "RAG",
+        "vecino más cercano aproximado",
+        "small world"
+      ],
+      "kicker": "SALA 04 · RECUPERACIÓN",
+      "ogLines": ["Búsqueda", "Vectorial HNSW"],
+      "ogNote": "Saltos voraces por capas: cómo un RAG encuentra el vecino en tiempo logarítmico.",
+      "preview": "previews/hnsw.png",
+      "zoom": 1.10,
+      "focus": 0.62,
+      "about": ["Nearest neighbor search", "Vector database", "Retrieval-augmented generation"]
+    },
+    {
+      "path": "/mcts",
+      "file": "mcts.astro",
+      "type": "article",
+      "room": "05",
+      "title": "MCTS y Tree of Thoughts en 3D · Razonamiento de IA",
+      "description": "Monte Carlo Tree Search visualizado: selección UCB, expansión, simulación y retropropagación, el bucle con el que razonan los modelos tipo o1 y DeepSeek-R1.",
+      "keywords": [
+        "MCTS",
+        "Monte Carlo Tree Search",
+        "Tree of Thoughts",
+        "razonamiento de IA",
+        "UCB",
+        "cómputo en inferencia"
+      ],
+      "kicker": "SALA 05 · RAZONAMIENTO",
+      "ogLines": ["Árboles de", "Razonamiento"],
+      "ogNote": "Selección, expansión, simulación y retropropagación: el bucle de MCTS, en vivo.",
+      "preview": "previews/mcts.png",
+      "zoom": 1.40,
+      "focus": 0.66,
+      "about": ["Monte Carlo tree search", "Automated reasoning", "Heuristic search"]
+    },
+    {
+      "path": "/kmeans",
+      "file": "kmeans.astro",
+      "type": "article",
+      "room": "06",
+      "title": "K-Means y Voronoi 3D · Agrupamiento paso a paso",
+      "description": "El ciclo de Lloyd en 3D y en vivo: asignar, mover el centroide, ver bajar la inercia y cómo las celdas de Voronoi reparten el espacio entre los grupos.",
+      "keywords": [
+        "K-Means",
+        "clustering",
+        "Voronoi",
+        "expectation maximization",
+        "aprendizaje no supervisado"
+      ],
+      "kicker": "SALA 06 · AGRUPAMIENTO",
+      "ogLines": ["Agrupamiento", "K-Means"],
+      "ogNote": "El ciclo de Lloyd, celda a celda: centroides que gravitan e inercia que baja.",
+      "preview": "previews/kmeans.png",
+      "zoom": 1.22,
+      "focus": 0.62,
+      "about": ["K-means clustering", "Voronoi diagram", "Cluster analysis"]
+    },
+
+    {
+      "path": "/galaxia",
+      "file": "galaxia.astro",
+      "redirectTo": "/embedding-nebula",
+      "title": "Nebulosa de Embeddings · TensorMesh",
+      "description": "Esta dirección se ha mudado a /embedding-nebula.",
+      "og": "/embedding-nebula"
+    },
+    {
+      "path": "/descenso",
+      "file": "descenso.astro",
+      "redirectTo": "/gradient-descent",
+      "title": "Descenso de Gradiente · TensorMesh",
+      "description": "Esta dirección se ha mudado a /gradient-descent.",
+      "og": "/gradient-descent"
+    },
+    {
+      "path": "/mapas-autoorganizados",
+      "file": "mapas-autoorganizados.astro",
+      "redirectTo": "/self-organizing-maps",
+      "title": "Mapas Autoorganizados · TensorMesh",
+      "description": "Esta dirección se ha mudado a /self-organizing-maps.",
+      "og": "/self-organizing-maps"
+    }
+  ]
+}

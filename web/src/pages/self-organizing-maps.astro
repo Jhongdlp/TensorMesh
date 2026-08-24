@@ -5,19 +5,18 @@
 // de binarios masivos de embeddings innecesariamente y separar las islas de React.
 import Som from "../rooms/som/Som.tsx";
 import "../styles/shell.css";
+import Seo from "../components/Seo.astro";
+import SeoBody from "../components/SeoBody.astro";
 ---
 
 <html lang="es">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Mapas Autoorganizados · TensorMesh</title>
-    <meta
-      name="description"
-      content="Redes neuronales autoorganizadas de Kohonen dibujadas como mallas elásticas 3D que aprenden y envuelven geometrías complejas mediante WebGPU."
-    />
+    <Seo path="/self-organizing-maps" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
-    <link rel="icon" type="image/png" href="/icons/ChatGPT Image 23 ago 2026, 10_28_10.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon.png" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -26,6 +25,7 @@ import "../styles/shell.css";
     />
   </head>
   <body>
+    <SeoBody path="/self-organizing-maps" />
     <Som client:only="react" />
 
     <style is:global>

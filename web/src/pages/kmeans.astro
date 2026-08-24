@@ -5,19 +5,18 @@
 // convergencia de inercia y particiones de Voronoi en WebGPU.
 import Kmeans from "../rooms/kmeans/Kmeans.tsx";
 import "../styles/shell.css";
+import Seo from "../components/Seo.astro";
+import SeoBody from "../components/SeoBody.astro";
 ---
 
 <html lang="es">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Agrupamiento K-Means & Voronoi 3D · TensorMesh</title>
-    <meta
-      name="description"
-      content="K-Means Clustering en 3D con WebGPU: visualiza en tiempo real el ciclo Expectation-Maximization, la gravitación de centroides y la partición espacial de Voronoi."
-    />
+    <Seo path="/kmeans" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
-    <link rel="icon" type="image/png" href="/icons/ChatGPT Image 23 ago 2026, 10_28_10.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon.png" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -26,6 +25,7 @@ import "../styles/shell.css";
     />
   </head>
   <body>
+    <SeoBody path="/kmeans" />
     <Kmeans client:only="react" />
 
     <style is:global>

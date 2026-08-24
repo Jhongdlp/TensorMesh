@@ -1,0 +1,185 @@
+---
+/**
+ * Cabecera compartida: metadatos, tarjeta de enlace y datos estructurados.
+ *
+ * Todas las salas son un canvas WebGPU hidratado en cliente (`client:only`),
+ * así que el HTML que recibe un rastreador **no tiene ni una palabra del
+ * contenido**: sin este bloque, lo único que Google, WhatsApp o un buscador de
+ * IA pueden decir de la página es lo que ponga en la etiqueta. Por eso aquí va
+ * todo lo que se puede afirmar sin ejecutar JavaScript.
+ *
+ * El texto no se escribe aquí: sale de `src/seo.json`, el mismo archivo que
+ * lee `pipeline/og.py` para dibujar la imagen 1200x630. Cambiar un título en un
+ * solo sitio y que la tarjeta compartida siga diciendo el viejo es el fallo
+ * que este reparto evita — y es un fallo que no se ve en la web, se ve en el
+ * móvil de quien recibe el enlace.
+ *
+ *     <Seo path="/hnsw" />
+ *
+ * Las rutas viejas (`redirectTo` en `seo.json`) no pasan por aquí: en sitio
+ * estático `Astro.redirect` no renderiza la plantilla, escribe su propia
+ * página con `noindex` y `canonical`. Siguen listadas en el JSON porque de
+ * ahí salen las reglas 301 y el sitemap.
+ */
+import seo from "../seo.json";
+
+interface Props {
+  /** Ruta con barra inicial, tal cual está en `seo.json`. */
+  path: string;
+}
+
+const { path } = Astro.props;
+const site = seo.site;
+const page = seo.pages.find((p) => p.path === path);
+if (!page) throw new Error(`Seo: la ruta ${path} no está en src/seo.json`);
+
+/** Absoluta y sin barra final (salvo la raíz): un canonical relativo lo
+ *  entiende Google pero no lo entiende ningún raspador de tarjetas. */
+const abs = (p: string) => site.url + (p === "/" ? "/" : p);
+
+const canonical = abs(page.path);
+const slug = (p: string) => (p === "/" ? "home" : p.replace(/^\//, "").replace(/\//g, "-"));
+const image = `${site.url}/og/${slug(page.path)}.jpg`;
+const title = page.title;
+const desc = page.description;
+const room = "room" in page ? (page as { room: string }).room : null;
+
+const keywords = "keywords" in page ? (page as { keywords: string[] }).keywords : null;
+const about = "about" in page ? (page as { about: string[] }).about : null;
+
+/** Persona única para todos los `author`/`creator`. */
+const person = {
+  "@type": "Person",
+  "@id": `${site.url}/#autor`,
+  name: site.author.name,
+  alternateName: site.author.alternateName,
+  url: site.author.url,
+  sameAs: site.author.sameAs,
+};
+
+const website = {
+  "@type": "WebSite",
+  "@id": `${site.url}/#sitio`,
+  url: `${site.url}/`,
+  name: site.name,
+  alternateName: site.tagline,
+  inLanguage: site.lang,
+  publisher: { "@id": `${site.url}/#autor` },
+};
+
+/** Cada sala es una aplicación que se ejecuta en el navegador, no un artículo:
+ *  no hay prosa que indexar, hay una simulación que se corre. `WebApplication`
+ *  con `browserRequirements` es lo que describe eso, y de paso es lo que hace
+ *  que un buscador de IA pueda contestar «sí, funciona en el navegador, hace
+ *  falta WebGPU» sin abrirla. */
+const app =
+  room !== null
+    ? {
+        "@type": ["WebApplication", "LearningResource"],
+        "@id": `${canonical}#app`,
+        url: canonical,
+        name: title.split(" · ")[0],
+        description: desc,
+        applicationCategory: "EducationalApplication",
+        operatingSystem: "Any (navegador con WebGPU o WebGL)",
+        browserRequirements: "Requiere WebGPU; con WebGL el modo es de sólo lectura",
+        learningResourceType: "Simulación interactiva",
+        educationalLevel: "Universitario / profesional",
+        isAccessibleForFree: true,
+        offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+        inLanguage: site.lang,
+        image,
+        author: { "@id": `${site.url}/#autor` },
+        isPartOf: { "@id": `${site.url}/#sitio` },
+        ...(about ? { about: about.map((n) => ({ "@type": "Thing", name: n })) } : {}),
+      }
+    : null;
+
+const breadcrumb =
+  room !== null
+    ? {
+        "@type": "BreadcrumbList",
+        itemListElement: [
+          { "@type": "ListItem", position: 1, name: site.name, item: `${site.url}/` },
+          { "@type": "ListItem", position: 2, name: `Sala ${room}`, item: canonical },
+        ],
+      }
+    : null;
+
+/** En la portada, el índice de salas: es la única forma de que un rastreador
+ *  que no ejecuta JavaScript sepa que detrás de esta página hay seis más. */
+const index =
+  page.path === "/"
+    ? {
+        "@type": "ItemList",
+        "@id": `${site.url}/#salas`,
+        name: "Galería interactiva",
+        numberOfItems: seo.pages.filter((p) => "room" in p).length,
+        itemListElement: seo.pages
+          .filter((p) => "room" in p)
+          .map((p, i) => ({
+            "@type": "ListItem",
+            position: i + 1,
+            name: (p as { title: string }).title.split(" · ")[0],
+            description: (p as { description: string }).description,
+            url: abs(p.path),
+          })),
+      }
+    : null;
+
+const graph = [person, website, app, breadcrumb, index].filter(Boolean);
+const jsonld = { "@context": "https://schema.org", "@graph": graph };
+---
+
+<title>{title}</title>
+<meta name="description" content={desc} />
+{keywords && <meta name="keywords" content={keywords.join(", ")} />}
+<link rel="canonical" href={canonical} />
+
+{/* `max-image-preview:large` es lo que autoriza a Google a enseñar la
+    tarjeta grande en Discover y en imágenes; sin ella se queda en miniatura. */}
+<meta
+  name="robots"
+  content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+/>
+
+<meta name="author" content={site.author.name} />
+<meta name="theme-color" content={site.themeColor} />
+<meta name="color-scheme" content="dark" />
+
+{/* Open Graph — Facebook, WhatsApp, LinkedIn, Telegram, Slack, Discord. */}
+<meta property="og:type" content={room !== null ? "article" : "website"} />
+<meta property="og:site_name" content={site.name} />
+<meta property="og:url" content={canonical} />
+<meta property="og:title" content={title} />
+<meta property="og:description" content={desc} />
+<meta property="og:locale" content={site.locale} />
+<meta property="og:locale:alternate" content={site.altLocale} />
+{/* `og:image` absoluta y con medidas: sin `width`/`height` varios clientes
+    piden la imagen antes de decidir el tamaño y algunos se rinden. */}
+<meta property="og:image" content={image} />
+<meta property="og:image:secure_url" content={image} />
+<meta property="og:image:type" content="image/jpeg" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content={`${title} — ${site.name}`} />
+
+{/* X/Twitter. `summary_large_image` es lo que convierte el enlace en una
+    tarjeta ancha; sin él sale la miniatura cuadrada de 120 px. */}
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:site" content={site.twitter} />
+<meta name="twitter:creator" content={site.twitter} />
+<meta name="twitter:title" content={title} />
+<meta name="twitter:description" content={desc} />
+<meta name="twitter:image" content={image} />
+<meta name="twitter:image:alt" content={`${title} — ${site.name}`} />
+
+{/* La hoja de Google Fonts se pide desde `fonts.googleapis.com` y las fuentes
+    desde `fonts.gstatic.com`: son dos hosts y las páginas sólo precontactaban
+    con el segundo, así que la primera conexión —la que bloquea el pintado del
+    texto— seguía pagando DNS + TLS entera. */}
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+
+<link rel="manifest" href="/site.webmanifest" />
+
+<script type="application/ld+json" set:html={JSON.stringify(jsonld)} />

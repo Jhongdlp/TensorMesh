@@ -1,0 +1,10 @@
+Space Grotesk (Florian Karsten) y Space Mono (Colophon Foundry) se distribuyen
+bajo la SIL Open Font License 1.1. Copia obtenida de Google Fonts:
+https://fonts.google.com/specimen/Space+Grotesk
+https://fonts.google.com/specimen/Space+Mono
+Texto de la licencia: https://openfontlicense.org
+
+Están aquí, y no descargadas al vuelo, porque `pipeline/og.py` tiene que poder
+regenerar las tarjetas de enlace sin red y dando siempre el mismo pixel: es la
+misma tipografía que la web pide a Google Fonts en el navegador, así que la
+tarjeta compartida y la página a la que lleva se parecen.

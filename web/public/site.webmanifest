@@ -1,0 +1,40 @@
+{
+  "name": "TensorMesh · Algoritmos de IA en 3D",
+  "short_name": "TensorMesh",
+  "description": "Seis laboratorios 3D en tiempo real: embeddings, descenso de gradiente, HNSW, MCTS, K-Means y mapas de Kohonen, simulados en tu GPU con WebGPU.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "lang": "es",
+  "dir": "ltr",
+  "background_color": "#1C1D1F",
+  "theme_color": "#1C1D1F",
+  "categories": ["education", "graphics", "science"],
+  "icons": [
+    { "src": "/favicon-32x32.png", "sizes": "32x32", "type": "image/png" },
+    { "src": "/favicon.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" },
+    {
+      "src": "/icons/tensormesh-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/tensormesh-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/og/home.jpg",
+      "sizes": "1200x630",
+      "type": "image/jpeg",
+      "form_factor": "wide",
+      "label": "La galería de TensorMesh"
+    }
+  ]
+}

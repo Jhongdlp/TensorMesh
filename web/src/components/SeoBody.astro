@@ -1,0 +1,147 @@
+---
+/**
+ * Lo único de esta web que se lee sin ejecutar JavaScript, más el `<h1>`.
+ *
+ * La portada y las seis salas son islas `client:only`: el HTML que sale del
+ * build tiene `<body>` vacío. Un navegador lo rellena en 200 ms, pero los que
+ * *no* ejecutan JavaScript —GPTBot, ClaudeBot, PerplexityBot, el raspador de
+ * tarjetas de WhatsApp, un lector de texto— ven una página en blanco y sin un
+ * solo enlace: sin esto, las seis salas no están enlazadas desde ninguna parte
+ * del HTML y el único descubridor que queda es el sitemap.
+ *
+ * No es texto escondido: va dentro de `<noscript>`, así que sólo existe cuando
+ * el visor no tiene el otro. Y dice exactamente lo mismo que la página, que es
+ * la condición para que esto sea una alternativa honrada y no un truco.
+ *
+ * **El `<h1>` va fuera del `<noscript>` y sí es invisible**, y esto sí hay que
+ * justificarlo. Ninguna sala tenía encabezado de primer nivel: el título de la
+ * página es un canvas, y los únicos `<h2>` que existen son los de las fichas
+ * que aparecen al seleccionar algo. Un `<h1>` en pantalla taparía justo lo que
+ * hay que mirar, así que va con `.sr-only`: lo lee un lector de pantalla —que
+ * hasta ahora entraba a la sala sin que nadie le dijera dónde está— y lo lee
+ * un rastreador. Dice literalmente lo mismo que el `<title>`, que es lo que
+ * separa esto de un texto oculto.
+ */
+import seo from "../seo.json";
+
+interface Props {
+  path: string;
+}
+
+const { path } = Astro.props;
+const page = seo.pages.find((p) => p.path === path)!;
+const rooms = seo.pages.filter((p) => "room" in p) as unknown as {
+  path: string;
+  title: string;
+  description: string;
+  room: string;
+}[];
+const here = "room" in page ? (page as unknown as { room: string }).room : null;
+---
+
+{/* En la portada no: `LandingPage` ya escribe el suyo, y a la vista. */}
+{here !== null && <h1 class="sr-only">{page.title}</h1>}
+
+<noscript>
+  <div class="nojs">
+    <p class="nojs-brand">TensorMesh</p>
+    {/* En la portada éste es el único encabezado que hay sin JavaScript —el
+        `<h1>` visible lo escribe React—, así que aquí sí es `<h1>`. En las
+        salas ya hay uno arriba y éste sólo es su rótulo. */}
+    {here === null ? (
+      <h1 class="nojs-title">{page.title.split(" · ")[0]}</h1>
+    ) : (
+      <p class="nojs-title">{page.title.split(" · ")[0]}</p>
+    )}
+    <p class="nojs-lead">{page.description}</p>
+    <p class="nojs-warn">
+      Esta página es una simulación 3D que se calcula en tu GPU: necesita
+      JavaScript y un navegador con WebGPU (Chrome, Edge u Opera actualizados;
+      en Linux, con <code>chrome://flags/#enable-unsafe-webgpu</code> activo).
+      Sin WebGPU el visor cae a WebGL, con posiciones fijas y sin simulación.
+    </p>
+
+    <h2>Las seis salas</h2>
+    <ul>
+      {
+        rooms.map((r) => (
+          <li>
+            <a href={r.path} aria-current={r.room === here ? "page" : undefined}>
+              Sala {r.room} · {r.title.split(" · ")[0]}
+            </a>{" "}
+            — {r.description}
+          </li>
+        ))
+      }
+    </ul>
+
+    <p class="nojs-attrib">
+      Vectores de palabras de <a href="https://fasttext.cc/">fastText</a>
+      (Facebook AI Research), <a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0</a>.
+      Construido por <a href="https://jhongdlp.com">Jhongdlp</a>.
+    </p>
+  </div>
+
+  <style is:global>
+    .nojs {
+      position: relative;
+      z-index: 99999;
+      max-width: 46rem;
+      margin: 0 auto;
+      padding: 4rem 1.5rem;
+      font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+      color: rgba(242, 239, 233, 0.78);
+      line-height: 1.6;
+    }
+    .nojs-brand {
+      font-family: "Space Mono", ui-monospace, monospace;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      color: rgba(242, 239, 233, 0.45);
+    }
+    .nojs-title {
+      margin: 0.4rem 0 1rem;
+      font-family: "Space Grotesk", system-ui, sans-serif;
+      font-size: clamp(2rem, 6vw, 3.2rem);
+      line-height: 1.05;
+      color: #f2efe9;
+      margin: 0.4rem 0 1rem;
+    }
+    .nojs h2 {
+      font-family: "Space Grotesk", system-ui, sans-serif;
+      font-size: 1.1rem;
+      color: #f2efe9;
+      margin-top: 2.5rem;
+    }
+    .nojs-lead { font-size: 1.12rem; }
+    .nojs-warn,
+    .nojs-attrib {
+      font-size: 0.85rem;
+      color: rgba(242, 239, 233, 0.5);
+      border-top: 1px solid rgba(242, 239, 233, 0.14);
+      padding-top: 1rem;
+      margin-top: 2rem;
+    }
+    .nojs ul { padding-left: 1.1rem; }
+    .nojs li { margin-bottom: 0.8rem; }
+    .nojs a { color: #f2efe9; }
+  </style>
+</noscript>
+
+<style is:global>
+  /* Fuera de la pantalla pero dentro del árbol de accesibilidad: `display:
+     none` o `visibility: hidden` lo borrarían también para el lector de
+     pantalla, que es la mitad del motivo de que exista. */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+</style>
