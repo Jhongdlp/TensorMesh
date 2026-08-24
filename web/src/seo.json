@@ -6,9 +6,15 @@
     "Si el título de una sala vive en dos archivos, uno de los dos se queda",
     "viejo y nadie se entera hasta que alguien pega el enlace en WhatsApp.",
     "",
-    "`ogTitle`/`ogLines` es lo que se dibuja EN la tarjeta y no siempre coincide",
-    "con `title`: en la tarjeta cabe menos y no hace falta repetir la marca,",
-    "que ya va impresa arriba a la izquierda."
+    "`ogLines` es lo que se dibuja EN la tarjeta y no siempre coincide con",
+    "`title`: en la tarjeta cabe menos y no hace falta repetir la marca, que ya",
+    "va impresa arriba a la izquierda.",
+    "",
+    "`layout` elige la composición: sin poner nada, la tipográfica sobre la",
+    "captura del lienzo; `raw` deja la captura de la aplicación tal cual, sin",
+    "escribir encima; `ui` es esa misma captura con la marca y el título por la",
+    "derecha, para no taparle el cajón. `raw` y `ui` piden una captura hecha",
+    "con `node test/shot.mjs`, ya en 1200x630."
   ],
 
   "site": {
@@ -51,9 +57,9 @@
       "kicker": "LABORATORIO 3D · WEBGPU",
       "ogLines": ["la forma", "de la mente", "artificial."],
       "ogNote": "Seis salas donde los algoritmos de la IA se calculan en vivo, en tu GPU.",
-      "preview": "previews/nebula-es.png",
-      "zoom": 1.5,
-      "focus": 0.3
+      "preview": "previews/nebula-ui.jpg",
+      "layout": "ui",
+      "ogStamp": "50.000 palabras en 3D · WebGPU"
     },
     {
       "path": "/embedding-nebula",

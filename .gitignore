@@ -1,3 +1,6 @@
 data/raw/
 data/*/_*.npy
 data/*/_*.npz
+
+# Bytecode de Python: se regenera solo.
+__pycache__/

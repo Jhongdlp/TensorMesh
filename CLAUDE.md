@@ -635,6 +635,18 @@ Detalles que no son obvios:
   hecho— y encima la misma tipografía de la web. `zoom`/`focus` por página
   existen porque MCTS y K-Means tienen el sujeto pequeño y centrado, justo
   debajo del titular.
+- **La de la portada es la aplicación de verdad**, con el cajón izquierdo, la
+  tira de herramientas y la atribución: dice «esto se toca», que es lo que una
+  composición tipográfica no dice. La hace `node test/shot.mjs` conduciendo un
+  Chromium por el protocolo de DevTools —`--screenshot` a secas dispara antes
+  de que el visor haya dibujado— y `layout: "ui"` en `seo.json` le escribe la
+  marca y el titular **por la derecha**, que es el lado que la captura deja
+  libre; `raw` la deja sin nada encima. Dos cosas hay que hacer antes de
+  disparar: marcar `atlas.intro.v1` (en un perfil nuevo la presentación tapa la
+  pantalla) y capturar ya en 1200x630, porque el cajón se coloca respecto a la
+  ventana y recortar un 16:9 después lo parte. Con `SHOT_GPU=1` el navegador
+  levanta WebGPU sobre la Vega y la captura sale del motor bueno, no del
+  respaldo WebGL.
 - **`og:image` absoluta, con `width`/`height` y por debajo de 300 KB.** Las
   rutas relativas no las resuelve nadie, sin medidas varios clientes se rinden
   antes de pedirla, y WhatsApp deja de mostrar la miniatura al pasarse de peso.
