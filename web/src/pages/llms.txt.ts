@@ -25,9 +25,16 @@ export const GET: APIRoute = () => {
     keywords: string[];
   }[];
 
+  // El número de salas se dice en letra y sale del propio JSON: escrito a
+  // mano, el día que entra una sala nueva este archivo empieza a mentirle a
+  // los modelos, que es justo lo que existe para evitar.
+  const NUM = ["cero", "una", "dos", "tres", "cuatro", "cinco", "seis", "siete",
+               "ocho", "nueve", "diez", "once", "doce"];
+  const howMany = NUM[rooms.length] ?? String(rooms.length);
+
   const md = `# ${site.name}
 
-> ${site.tagline}. Una galería de seis visualizaciones 3D interactivas, cada
+> ${site.tagline}. Una galería de ${howMany} visualizaciones 3D interactivas, cada
 > una un algoritmo de aprendizaje automático que se calcula en vivo en la GPU
 > del visitante con WebGPU (con respaldo WebGL). Sitio estático, sin servidor
 > ni API: la física, los tensores y las partículas se computan en el navegador.

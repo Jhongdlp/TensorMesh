@@ -1,0 +1,394 @@
+---
+// Sala 07 — Red Neuronal (perceptrón multicapa) y retropropagación.
+//
+// Página aparte, como el resto de las salas: `Nn.tsx` habla en vocabulario de
+// pesos y capas y no generaliza, un canvas no admite WebGL y WebGPU a la vez,
+// y quien viene por el gradiente no tiene por qué descargar el atlas.
+//
+// El mueble entero —cajón, tira de herramientas, raíl derecho, ficha,
+// píldoras y modo inmersivo— sale de `shell.css`. Aquí abajo sólo vive lo que
+// es de esta sala: la curva de pérdida, el editor de arquitectura, las barras
+// de peso y las láminas de la guía.
+import Nn from "../rooms/nn/Nn.tsx";
+import "../styles/shell.css";
+import Seo from "../components/Seo.astro";
+import SeoBody from "../components/SeoBody.astro";
+---
+
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <Seo path="/neural-network" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon.png" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap"
+    />
+  </head>
+  <body>
+    <SeoBody path="/neural-network" />
+    <Nn client:only="react" />
+
+    <style is:global>
+      /* --------------------------------------------------------- sin WebGPU */
+      .room-nogpu {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        gap: 0.9rem;
+        text-align: center;
+        padding: 2rem;
+        background: var(--void);
+        z-index: 5;
+      }
+      .room-nogpu p {
+        margin: 0;
+        max-width: 30rem;
+        color: var(--ink-2);
+        font-size: 0.92rem;
+        line-height: 1.6;
+      }
+      .room-nogpu-title {
+        font-family: "Space Grotesk", "Helvetica Neue", Arial, sans-serif;
+        font-size: 1.5rem !important;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        color: var(--ink) !important;
+      }
+      .room-nn code {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.9em;
+        color: var(--ink);
+      }
+
+      /* Botón que se lee como enlace: va dentro de una frase y una caja ahí
+         partiría la línea en dos cosas distintas. */
+      .link {
+        background: none;
+        border: 0;
+        padding: 0;
+        font: inherit;
+        color: var(--ink-2);
+        text-decoration: underline;
+        text-underline-offset: 2px;
+        cursor: pointer;
+      }
+      .link:hover { color: #fff; }
+
+      /* ------------------------------------------------------------ el raíl */
+      .room-nn .ctl-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 0.6rem;
+      }
+      .room-nn .ctl-head .eyebrow { margin: 0; }
+      .room-nn .fps {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.62rem;
+        letter-spacing: 0.06em;
+        color: var(--ink-4);
+        flex: 0 0 auto;
+      }
+
+      /* La fase, con su punto. El color no es decorativo: es el mismo que
+         llevan los pulsos que están cruzando la red en ese momento, así que
+         el rótulo y el lienzo se señalan el uno al otro. */
+      .room-nn .nn-phase {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        margin: 0;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.66rem;
+        letter-spacing: 0.06em;
+        text-transform: lowercase;
+        color: var(--ink-2);
+      }
+      .room-nn .nn-phase i {
+        width: 0.45rem;
+        height: 0.45rem;
+        border-radius: 50%;
+        flex: 0 0 auto;
+        box-shadow: 0 0 0 1px #0006 inset;
+      }
+      .room-nn .nn-phase-fwd i { background: #00f0ff; }
+      .room-nn .nn-phase-bwd i { background: #ffd28a; }
+      .room-nn .nn-phase-upd i { background: #f2efe9; }
+
+      .room-nn .nn-chart {
+        width: 100%;
+        height: 3.4rem;
+        display: block;
+        border-bottom: 1px solid var(--rule);
+      }
+      .room-nn .nn-chart-empty { opacity: 0.35; }
+
+      .room-nn .nn-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.15rem 0.85rem;
+      }
+      .room-nn .nn-legend b { color: var(--ink); font-weight: 500; }
+      .room-nn .nn-key {
+        display: inline-block;
+        width: 0.7rem;
+        height: 0.12rem;
+        margin-right: 0.35rem;
+        vertical-align: 0.22rem;
+      }
+      .room-nn .nn-key-dash {
+        background: repeating-linear-gradient(90deg,
+          rgba(242, 239, 233, 0.6) 0 3px, transparent 3px 6px);
+      }
+      .room-nn .nn-big {
+        font-size: 0.78rem;
+        color: var(--ink-2);
+      }
+      .room-nn .nn-big b {
+        font-size: 1.15rem;
+        color: #fff;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+
+      /* ------------------------------------------------- editor de arquitectura */
+      .room-nn .nn-arch {
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+      }
+      .room-nn .nn-arch-fixed {
+        margin: 0;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.66rem;
+        letter-spacing: 0.04em;
+        color: var(--ink-4);
+      }
+      .room-nn .nn-arch-row {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.68rem;
+        color: var(--ink-2);
+      }
+      .room-nn .nn-arch-row span { flex: 1 1 auto; }
+      .room-nn .nn-arch-row b {
+        min-width: 1.5rem;
+        text-align: center;
+        color: #fff;
+        font-weight: 600;
+      }
+      /* 1,7 rem son 27 px: por debajo de lo que se acierta sin apuntar, pero
+         estos dos van pegados a su cifra y en un cajón que ya está abierto —
+         el mínimo grande se reserva para lo que queda a la vista plegado. */
+      .room-nn .nn-arch-row button {
+        width: 1.7rem;
+        height: 1.7rem;
+        flex: 0 0 auto;
+        background: var(--btn);
+        border: 1px solid var(--rule);
+        border-radius: 7px;
+        color: var(--ink-2);
+        font-size: 0.92rem;
+        line-height: 1;
+        cursor: pointer;
+      }
+      .room-nn .nn-arch-row button:hover:not(:disabled) {
+        background: rgba(255, 255, 255, 0.12);
+        color: #fff;
+      }
+      .room-nn .nn-arch-row button:disabled { opacity: 0.3; cursor: default; }
+      .room-nn .nn-arch-row button:focus-visible {
+        outline: 2px solid var(--ink);
+        outline-offset: -2px;
+      }
+      @media (pointer: coarse) {
+        .room-nn .nn-arch-row button { width: 2.2rem; height: 2.2rem; }
+      }
+
+      /* ------------------------------------------------------------ la ficha */
+      .room-nn .note {
+        margin: 0.7rem 0 0;
+        font-size: 0.8rem;
+        line-height: 1.55;
+        color: rgba(255, 255, 255, 0.78);
+      }
+      .room-nn .note b { color: #fff; font-weight: 600; }
+      .room-nn .err { margin: 0.7rem 0 0; font-size: 0.78rem; line-height: 1.5; }
+      .room-nn .phase { margin-top: 1rem; color: var(--ink-4); }
+      /* Con la nota larga y el botón al lado, en un raíl estrecho no caben en
+         una línea: que envuelva es mejor que que se aprieten hasta partir las
+         palabras del botón. */
+      .room-nn .nn-foot {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 0.5rem 0.6rem;
+      }
+      /* El botón de la guía no se parte: con el texto en tres líneas la ficha
+         crece hacia arriba y se come la nota que tiene encima. */
+      .room-nn .card-guide-btn {
+        flex: 0 0 auto;
+        white-space: nowrap;
+      }
+      .room-nn .nn-foot > span { min-width: 0; }
+      .room-nn .rail-r .card { margin-top: auto; max-height: 58vh; }
+
+      /* Cómo se lee la escena. Cada viñeta lleva su propio color, que es el
+         que tiene esa cosa en el lienzo: la leyenda no puede describir el
+         dibujo con otra tinta que la del dibujo. */
+      .room-nn .nn-read {
+        list-style: none;
+        margin: 0.8rem 0 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.55rem;
+      }
+      .room-nn .nn-read li {
+        display: flex;
+        gap: 0.55rem;
+        font-size: 0.76rem;
+        line-height: 1.5;
+        color: var(--ink-2);
+      }
+      .room-nn .nn-read b { color: #fff; font-weight: 600; }
+      .room-nn .nn-read-i {
+        flex: 0 0 auto;
+        width: 1.5rem;
+        height: 0.7rem;
+        margin-top: 0.22rem;
+        border-radius: 2px;
+        box-shadow: 0 0 0 1px #0006 inset;
+      }
+      .room-nn .nn-read-floor {
+        background: linear-gradient(90deg, #ff4070, #0b0d12 46% 54%, #00f0ff);
+      }
+      .room-nn .nn-read-edge {
+        background: linear-gradient(90deg, #ff4070 0 45%, transparent 45% 55%, #00f0ff 55%);
+      }
+      .room-nn .nn-read-node {
+        background: radial-gradient(circle at 30% 30%, #fff 0 26%, rgba(255, 255, 255, 0.42) 40%, rgba(255, 255, 255, 0.06) 72%);
+      }
+
+      /* --------------------------------------------------- pesos que entran */
+      .room-nn .nn-w {
+        list-style: none;
+        margin: 0.5rem 0 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.28rem;
+      }
+      .room-nn .nn-w li {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.66rem;
+        color: var(--ink-3);
+      }
+      .room-nn .nn-w-t { flex: 0 0 2.6rem; color: var(--ink-2); }
+      /* El cero va en el centro y la barra crece hacia su lado. Con las barras
+         alineadas a la izquierda el signo sólo lo diría el símbolo, que es
+         justo lo que no se ve de un vistazo. */
+      .room-nn .nn-w-bar {
+        position: relative;
+        flex: 1 1 auto;
+        height: 0.42rem;
+        background: rgba(255, 255, 255, 0.06);
+        border-radius: 2px;
+      }
+      .room-nn .nn-w-bar::before {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: -1px;
+        bottom: -1px;
+        width: 1px;
+        background: rgba(255, 255, 255, 0.28);
+      }
+      .room-nn .nn-w-bar i {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        border-radius: 2px;
+      }
+      .room-nn .nn-w-n { flex: 0 0 3rem; text-align: right; color: var(--ink-2); }
+
+      /* ------------------------------------------------- láminas de la guía */
+      .nn-fig-split {
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .nn-fig-sq {
+        flex: 0 0 auto;
+        width: 9.4rem;
+        max-width: 46vw;
+        height: auto;
+      }
+      .nn-fig-ctl {
+        flex: 1 1 9rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        min-width: 8rem;
+      }
+      .nn-fig-ctl label {
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.66rem;
+        letter-spacing: 0.04em;
+        color: var(--ink-3);
+      }
+      .nn-fig-ctl label b { color: #fff; font-weight: 500; }
+      .nn-fig-ctl input[type="range"] {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 100%;
+        height: 2px;
+        background: rgba(255, 255, 255, 0.22);
+        border-radius: 2px;
+        cursor: pointer;
+      }
+      .nn-fig-ctl input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 0.8rem;
+        height: 0.8rem;
+        border-radius: 50%;
+        background: var(--ink);
+        border: 0;
+      }
+      .nn-fig-ctl input[type="range"]::-moz-range-thumb {
+        width: 0.8rem;
+        height: 0.8rem;
+        border-radius: 50%;
+        background: var(--ink);
+        border: 0;
+      }
+
+      .room-nn .tool:disabled { opacity: 0.3; cursor: default; }
+      .room-nn .tool:disabled:hover { background: var(--btn); color: var(--ink-3); }
+
+      @media (max-height: 720px) {
+        .room-nn .rail-r .card { max-height: 44vh; }
+      }
+    </style>
+  </body>
+</html>

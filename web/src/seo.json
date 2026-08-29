@@ -46,7 +46,7 @@
       "file": "index.astro",
       "type": "website",
       "title": "TensorMesh · Algoritmos de IA en 3D con WebGPU",
-      "description": "Seis laboratorios 3D en tiempo real: embeddings, descenso de gradiente, HNSW, MCTS, K-Means y mapas de Kohonen, simulados en tu GPU con WebGPU.",
+      "description": "Siete laboratorios 3D en tiempo real: embeddings, descenso de gradiente, redes neuronales, HNSW, MCTS, K-Means y mapas de Kohonen, en tu GPU con WebGPU.",
       "keywords": [
         "visualización de algoritmos",
         "inteligencia artificial en 3D",
@@ -55,7 +55,7 @@
         "machine learning interactivo"
       ],
       "kicker": "LABORATORIO 3D · WEBGPU",
-      "ogNote": "Seis salas donde los algoritmos de la IA se calculan en vivo, en tu GPU.",
+      "ogNote": "Siete salas donde los algoritmos de la IA se calculan en vivo, en tu GPU.",
       "preview": "previews/nebula-ui-en.jpg",
       "layout": "ui",
       "ogLines": ["the shape", "of artificial", "mind."],
@@ -195,6 +195,30 @@
       "zoom": 1.22,
       "focus": 0.62,
       "about": ["K-means clustering", "Voronoi diagram", "Cluster analysis"]
+    },
+
+    {
+      "path": "/neural-network",
+      "file": "neural-network.astro",
+      "type": "article",
+      "room": "07",
+      "title": "Red Neuronal en 3D · Retropropagación paso a paso",
+      "description": "Un perceptrón multicapa entrenándose en vivo: los pesos arriba, la frontera de decisión abajo, y los pulsos de la retropropagación cruzando la red en tu GPU.",
+      "keywords": [
+        "red neuronal",
+        "retropropagación",
+        "backpropagation",
+        "perceptrón multicapa",
+        "frontera de decisión",
+        "deep learning interactivo"
+      ],
+      "kicker": "SALA 07 · REDES NEURONALES",
+      "ogLines": ["Red Neuronal", "y Retropropagación"],
+      "ogNote": "Los pesos arriba, la frontera que dibujan abajo: la misma cosa vista dos veces.",
+      "preview": "previews/nn.png",
+      "zoom": 1.0,
+      "focus": 0.55,
+      "about": ["Artificial neural network", "Backpropagation", "Multilayer perceptron"]
     },
 
     {

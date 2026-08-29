@@ -58,11 +58,12 @@ python3 pipeline/og.py /hnsw             # sólo una
 ```bash
 npm run dev            # astro dev
 npm run build          # astro build → dist/
-npm test               # check + unit + physics + render + descent + seo
+npm test               # check + unit + physics + render + descent + nn + seo
 npm run check          # tsc sobre src/galaxy/**/*.ts y src/components/**/*.tsx
 npm run test:physics   # node test/physics.mjs
 npm run test:render    # node test/render.mjs
 node test/unit.mjs es  # lógica pura, sin GPU, < 1 s
+npm run test:nn        # node test/nn.mjs (gradiente, aprendizaje y shader de la sala 07)
 npm run test:seo       # build + node test/seo.mjs (metadatos y tarjetas, sin GPU)
 ```
 
@@ -605,10 +606,107 @@ antes con `DESC_FRAMES`. Chrome en esta máquina cae al respaldo WebGL —donde
 estos shaders no existen—, así que el estado convergido **sólo** se puede ver
 por Dawn.
 
+## Tercera sala documentada: `neural-network` (sala 07)
+
+`web/src/pages/neural-network.astro` + `web/src/rooms/nn/`. Un perceptrón
+multicapa entrenándose en vivo sobre cinco conjuntos clásicos, con la frontera
+de decisión dibujada debajo de la red que la produce.
+
+La idea entera de la sala cabe en una frase: **arriba los coeficientes, abajo
+la función**. El suelo es el cuadrado de entradas completo y su color es lo que
+la red contestaría en cada punto; la malla de arriba son los pesos que producen
+esa respuesta. Mirar las dos mitades a la vez es lo único que convierte «una
+matriz cambió» en «la frontera se dobló», y es la razón de que la cámara
+arranque de tres cuartos: de frente la red se lee como un diagrama de libro y
+el suelo desaparece en una línea.
+
+### Lo que hace la CPU y lo que hace la GPU
+
+Al revés que el atlas. `math.mjs` entrena en CPU —paso hacia delante,
+retropropagación, pérdida, acierto y el muestreo del campo— y el motor sólo
+traduce a geometría. La red es diminuta (unas decenas de pesos) y lo que hay
+que enseñar no es cuánto se paraleliza sino **qué número cambia y por qué**: la
+ficha de una neurona enseña sus pesos y el suelo enseña la función que definen.
+Con los pesos viviendo sólo en la GPU habría que bajarlos en cada clic.
+
+- **`math.mjs` es `.mjs` y no `.ts`** por lo mismo que `palette.mjs` y
+  `field.mjs`: `test/nn.mjs` lo importa tal cual para comprobar el gradiente
+  contra diferencias finitas.
+- **`layout.mjs`** tiene las medidas de la escena (suelo, columnas, encuadre) y
+  también lo importa el test: con las medidas copiadas, el PNG de la prueba
+  deja de representar la sala en cuanto alguien mueve el suelo.
+
+### Detalles que se rompen solos si se tocan
+
+- **El tamaño de una neurona va en clip *sin* multiplicar por `w`.** Ése es el
+  único sitio donde este render se separa del de K-Means: allí el punto es un
+  dato y tiene que medir lo mismo de cerca que de lejos; aquí la neurona es un
+  objeto dentro de la escena y tiene que encoger. Con el `* clip.w` puesto, la
+  red entera sale como un montón de bolas apiladas del mismo tamaño.
+- **Los puntos del conjunto se dibujan con su propio pipeline, sin escritura de
+  profundidad.** Son coplanares y se solapan: con profundidad, el disco que
+  llega después queda recortado por el que ya estaba y la nube se llena de
+  medias lunas. Mismo shader, mismo grupo de enlace, otro `depthStencil`.
+- **El valor crudo del campo viaja en el alfa de la textura del suelo**, no en
+  una segunda textura: `fsFloor` lo necesita para las curvas de nivel, y la
+  textura es opaca de todos modos —la opacidad del suelo la pone el uniforme—,
+  así que el canal ya estaba pagado.
+- **Los pulsos no llevan bandera de dirección.** El motor pasa un frente
+  (`wave`) que recorre las capas de 0 a L en la ida y de L a 0 en la vuelta, y
+  el vértice sólo mira `wave − capa`. La dirección sale del *sentido* de ese
+  número, así que ida y vuelta son exactamente el mismo dibujo.
+- **El brillo del pulso de ida no es el del de vuelta**: de ida es `|w·a|` —la
+  señal que lleva la conexión— y de vuelta `|∂L/∂w|` —la culpa que le toca—.
+  Que no se enciendan las mismas aristas en cada sentido *es* la lección; con
+  una sola magnitud, el paso hacia atrás se convierte en un adorno.
+- **Cambiar la arquitectura o la activación reinicia los pesos.** No hay forma
+  honesta de trasplantar una matriz de 6×6 a una de 8×6, y fingirlo daría una
+  curva de pérdida que no corresponde a ninguna red.
+- **El brillo de las aristas se escala por su número** (`√(72/m)`), igual que
+  en el atlas: el aditivo suma luz y una constante calibrada a la red de casa
+  satura a blanco con cuatro capas anchas.
+- **`clear()` no llama a `goHome()`**, al revés que en el atlas. Allí
+  seleccionar clava el centro de la órbita en la palabra; aquí la red entera
+  cabe en el encuadre y elegir no mueve la cámara, así que devolverla sería
+  deshacer algo que no se hizo. Las cuatro salidas siguen ahí: `Esc`, la
+  píldora, el botón de la ficha y el clic en el vacío.
+- **El encuadre lo manda la esquina cercana del suelo**, no la red: el plano
+  está inclinado y su esquina de delante cae mucho más abajo que su borde.
+  Y sobra un poco por encima de lo justo porque el lienzo va de borde a borde
+  pero no se ve entero — el cajón se come la izquierda y el raíl la derecha.
+- **Las neuronas son blancas**, como en el atlas, y por el mismo motivo: el
+  color lo llevan las aristas (el signo del peso) y el suelo (la respuesta).
+  Las dos excepciones son las entradas, que toman los colores de los dos ejes
+  del suelo — y eso es toda la leyenda que el lienzo necesita, sin una sola
+  etiqueta encima del dibujo.
+
+### El ciclo dibujado no es el reloj del entrenamiento
+
+Los pulsos recorren un ciclo fijo de 1,5 s (ida · vuelta · actualización) y la
+velocidad es un mando aparte, en **lotes por segundo**. A velocidad alta la red
+hace cientos de lotes por cada pulso que se ve, y el HUD lo dice. El camino
+honesto para ver un lote es la tecla `N` con la pausa puesta: ejecuta uno
+exacto y dibuja su ciclo entero. La guía lo explica en su capítulo 7.
+
+```bash
+node test/nn.mjs                              # gradiente + aprendizaje + shader + PNG
+NN_BATCHES=6000 NN_W=1200 NN_H=700 node test/nn.mjs
+```
+
+`test/nn.mjs` escribe `data/nn.png` — **míralo, es media prueba**. Y comprueba
+lo que ningún otro sitio puede: que la retropropagación coincide con
+diferencias finitas de la propia pérdida. Un signo cambiado en la derivada de
+la activación no rompe nada visible —la sala seguiría entrenando, sólo que
+hacia el sitio equivocado—, así que sin esa comprobación no hay red que lo
+pare. Para ReLU se descartan los pesos cuya perturbación cruza el codo: ahí la
+diferencia finita compara dos funciones lineales distintas y no puede coincidir
+con ninguna derivada.
+
+
 ## Lo que se ve sin abrir la web
 
-El HTML que sale del build tiene el `<body>` **vacío**: la portada y las seis
-salas son islas `client:only`. Un navegador lo rellena en 200 ms; el raspador de
+El HTML que sale del build tiene el `<body>` **vacío**: la portada y las salas
+son islas `client:only`. Un navegador lo rellena en 200 ms; el raspador de
 tarjetas de WhatsApp, GPTBot, ClaudeBot, PerplexityBot y cualquier lector de
 texto, no. Todo lo que este sitio puede *decir* sin ejecutarse vive en cuatro
 sitios y **ninguno de los cuatro escribe su propio texto**:
@@ -692,6 +790,9 @@ Tres sitios describen los mismos bytes y **no hay tipo compartido entre ellos**:
 | Uniform del caminante (128 B) | `rooms/descent/engine.ts:writeWalker` | `rooms/descent/render.wgsl:Uni`, `test/descent.mjs` |
 | Encuadre y ángulo de la sala | `rooms/descent/engine.ts` (`PHI_RELIEF`, `radius·0,95`) | `test/descent.mjs:camera` |
 | Dominio y altura del campo | `rooms/descent/field.wgsl` | `rooms/descent/field.mjs` (encuadre y siembra) |
+| Uniforme de la red neuronal (160 B) | `rooms/nn/engine.ts:render` | `rooms/nn/nn_render.wgsl:Uni`, `test/nn.mjs` |
+| Vértice de línea (32 B) e instancia (48 B) | `rooms/nn/engine.ts` (`buildEdges`, `buildNeurons`, `buildPulses`) | `rooms/nn/nn_render.wgsl`, `test/nn.mjs` |
+| Textura del campo de decisión (rgba8, alfa = valor crudo) | `rooms/nn/engine.ts:refresh` | `rooms/nn/nn_render.wgsl:fsFloor`, `test/nn.mjs` |
 
 Los metadatos **ya no se duplican**: `web/src/seo.json` es la fuente única de
 `Seo.astro`, `SeoBody.astro`, los endpoints de `sitemap.xml`/`robots.txt`/
@@ -703,6 +804,11 @@ entrada, `<Seo path="...">` aborta el build en vez de publicar una página muda.
 reimplementado de `camera.ts` —esa duplicación no está resuelta—, pero es **una**
 y no una por test. Si tocas cualquiera de esas cosas en
 `src/`, hay que replicarlo en el test o el PNG deja de representar la web.
+
+Las medidas de la sala 07 **no** están en ese cuadro a propósito: suelo,
+columnas, radios y encuadre viven en `rooms/nn/layout.mjs` y el test los
+importa, igual que `field.mjs` en la sala 02. Lo que sigue duplicado ahí es el
+empaquetado de los búferes, que necesita el `device`.
 
 El color de zona y los escalones de resalte **ya no se duplican**: viven en
 `src/galaxy/palette.mjs` y `src/galaxy/highlight.mjs` y el test los importa. Son

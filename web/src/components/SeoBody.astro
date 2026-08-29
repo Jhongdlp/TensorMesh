@@ -2,11 +2,11 @@
 /**
  * Lo único de esta web que se lee sin ejecutar JavaScript, más el `<h1>`.
  *
- * La portada y las seis salas son islas `client:only`: el HTML que sale del
+ * La portada y las salas son islas `client:only`: el HTML que sale del
  * build tiene `<body>` vacío. Un navegador lo rellena en 200 ms, pero los que
  * *no* ejecutan JavaScript —GPTBot, ClaudeBot, PerplexityBot, el raspador de
  * tarjetas de WhatsApp, un lector de texto— ven una página en blanco y sin un
- * solo enlace: sin esto, las seis salas no están enlazadas desde ninguna parte
+ * solo enlace: sin esto, las salas no están enlazadas desde ninguna parte
  * del HTML y el único descubridor que queda es el sitemap.
  *
  * No es texto escondido: va dentro de `<noscript>`, así que sólo existe cuando
@@ -61,7 +61,7 @@ const here = "room" in page ? (page as unknown as { room: string }).room : null;
       Sin WebGPU el visor cae a WebGL, con posiciones fijas y sin simulación.
     </p>
 
-    <h2>Las seis salas</h2>
+    <h2>Las {rooms.length} salas</h2>
     <ul>
       {
         rooms.map((r) => (

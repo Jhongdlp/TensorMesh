@@ -578,12 +578,63 @@ function KmeansMotionGlyph({ isHovered }: { isHovered: boolean }) {
   );
 }
 
-function RoomGlyph({ name, isHovered }: { name: "nebula" | "descent" | "som" | "hnsw" | "mcts" | "kmeans"; isHovered: boolean }) {
+function NnMotionGlyph({ isHovered }: { isHovered: boolean }) {
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTick((t) => (t + 1) % 20);
+    }, isHovered ? 60 : 120);
+    return () => clearInterval(timer);
+  }, [isHovered]);
+
+  const grid: number[][] = Array.from({ length: 8 }, () => Array(10).fill(0));
+
+  // Cuatro columnas: 2 entradas, dos capas ocultas de 4 y una salida.
+  const cols: [number, number[]][] = [
+    [0, [2, 5]],
+    [3, [0, 2, 4, 6]],
+    [6, [0, 2, 4, 6]],
+    [9, [3]],
+  ];
+  for (const [c, rows] of cols) for (const r of rows) grid[r][c] = 1;
+
+  // El frente de señal barre las capas de ida y vuelve encendiendo las
+  // mismas columnas al revés: es el ciclo de la sala en diez píxeles.
+  const step = tick % 20;
+  const fwd = step < 10;
+  const front = fwd ? step : 19 - step;
+  for (const [c, rows] of cols) {
+    if (Math.abs(c - front) > 1.5) continue;
+    for (const r of rows) {
+      grid[r][c] = 1;
+      if (c > 0) grid[r][c - 1] = 1;
+    }
+  }
+  // Las conexiones, insinuadas entre columnas mientras pasa el frente.
+  if (front > 0 && front < 9) {
+    grid[3][Math.min(9, front)] = 1;
+    grid[4][Math.min(9, front)] = 1;
+  }
+
+  return (
+    <div className="landing-glyph" aria-hidden="true">
+      {grid.flatMap((row, r) =>
+        row.map((on, c) => (
+          <span key={`${r}-${c}`} className={on ? "gp gp-on" : "gp"} />
+        )),
+      )}
+    </div>
+  );
+}
+
+function RoomGlyph({ name, isHovered }: { name: "nebula" | "descent" | "som" | "hnsw" | "mcts" | "kmeans" | "nn"; isHovered: boolean }) {
   if (name === "nebula") return <NebulaMotionGlyph isHovered={isHovered} />;
   if (name === "descent") return <DescentMotionGlyph isHovered={isHovered} />;
   if (name === "som") return <SomMotionGlyph isHovered={isHovered} />;
   if (name === "hnsw") return <HnswMotionGlyph isHovered={isHovered} />;
   if (name === "mcts") return <MctsMotionGlyph isHovered={isHovered} />;
+  if (name === "nn") return <NnMotionGlyph isHovered={isHovered} />;
   return <KmeansMotionGlyph isHovered={isHovered} />;
 }
 

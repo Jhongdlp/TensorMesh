@@ -8,12 +8,13 @@
     "build": "astro build",
     "preview": "astro preview",
     "check": "tsc -p tsconfig.check.json",
+    "test:unit": "node test/unit.mjs",
     "test:physics": "node test/physics.mjs",
     "test:render": "node test/render.mjs",
     "test:descent": "node test/descent.mjs",
+    "test:nn": "node test/nn.mjs",
     "test:seo": "npm run build && node test/seo.mjs",
-    "test": "npm run check && npm run test:unit && npm run test:physics && npm run test:render && npm run test:descent && npm run test:seo",
-    "test:unit": "node test/unit.mjs"
+    "test": "npm run check && npm run test:unit && npm run test:physics && npm run test:render && npm run test:descent && npm run test:nn && npm run test:seo"
   },
   "keywords": [],
   "type": "commonjs",

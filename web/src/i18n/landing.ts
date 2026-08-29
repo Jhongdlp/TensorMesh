@@ -1,6 +1,6 @@
 export interface LandingRoomCopy {
   id: string;
-  glyph: "nebula" | "descent" | "som" | "hnsw" | "mcts" | "kmeans";
+  glyph: "nebula" | "descent" | "som" | "hnsw" | "mcts" | "kmeans" | "nn";
   previewImg: string;
   previewAlt: string;
   status: string;
@@ -121,6 +121,17 @@ export const LANDING_COPY: Record<"es" | "en", LandingCopy> = {
         href: "/kmeans",
         action: "Agrupar los puntos",
       },
+      {
+        id: "07",
+        glyph: "nn",
+        previewImg: "/previews/nn.png",
+        previewAlt: "Red Neuronal en 3D (perceptrón multicapa y frontera de decisión)",
+        status: "Abierta",
+        title: "Red Neuronal",
+        desc: "Un perceptrón multicapa entrenándose delante de ti: arriba los pesos, abajo la frontera de decisión que dibujan, y los pulsos de la retropropagación cruzando la red. Pincha una neurona y el suelo pasa a enseñar lo que sólo ella mira.",
+        href: "/neural-network",
+        action: "Entrenar la red",
+      },
     ],
     footerAttrib: "Laboratorio Interactivo · WebGPU & 3D Shaders",
     footerSource: "Código fuente",
@@ -210,6 +221,17 @@ export const LANDING_COPY: Record<"es" | "en", LandingCopy> = {
         desc: "Unsupervised clustering and 3D Voronoi partitions in real-time. Watch gravitational centroids iterate through Expectation-Maximization steps to minimize intra-cluster inertia on complex point clouds.",
         href: "/kmeans",
         action: "Cluster the points",
+      },
+      {
+        id: "07",
+        glyph: "nn",
+        previewImg: "/previews/nn.png",
+        previewAlt: "Neural Network in 3D (multilayer perceptron and decision boundary)",
+        status: "Open",
+        title: "Neural Network",
+        desc: "A multilayer perceptron training in front of you: the weights above, the decision boundary they draw below, and backpropagation pulses crossing the net. Click a neuron and the floor switches to what only that unit sees.",
+        href: "/neural-network",
+        action: "Train the network",
       },
     ],
     footerAttrib: "Interactive Lab · WebGPU & 3D Shaders",

@@ -759,6 +759,32 @@ import SeoBody from "../components/SeoBody.astro";
         outline-offset: -7px;
       }
 
+      /* ---- La placa que se queda sola en la última fila ----
+         La rejilla dibuja sus filetes con el hueco entre celdas, así que una
+         fila coja no deja un vacío: deja un recuadro con marco, que se lee
+         como una placa que no cargó. La última ocupa entonces la fila entera
+         y se tumba —miniatura a la izquierda, texto a la derecha—, que es la
+         única forma de que a ese ancho no quede una imagen diminuta flotando
+         sobre tres líneas de texto. */
+      .landing-room-list > li:last-child:nth-child(3n + 1) { grid-column: 1 / -1; }
+      .landing-room-list > li:last-child:nth-child(3n + 1) .landing-room {
+        min-height: 0;
+        display: grid;
+        grid-template-columns: minmax(0, 24rem) minmax(0, 1fr);
+        grid-template-rows: auto auto 1fr auto;
+        column-gap: clamp(1.6rem, 3vw, 3rem);
+      }
+      .landing-room-list > li:last-child:nth-child(3n + 1) .landing-room-thumb-wrap {
+        grid-column: 1;
+        grid-row: 1 / -1;
+        align-self: center;
+        margin: 0;
+      }
+      .landing-room-list > li:last-child:nth-child(3n + 1) .landing-room-top { grid-area: 1 / 2; }
+      .landing-room-list > li:last-child:nth-child(3n + 1) .landing-room-heading { grid-area: 2 / 2; }
+      .landing-room-list > li:last-child:nth-child(3n + 1) .landing-room-desc { grid-area: 3 / 2; max-width: 62ch; }
+      .landing-room-list > li:last-child:nth-child(3n + 1) .landing-room-action { grid-area: 4 / 2; }
+
       .landing-room-top {
         display: flex;
         align-items: center;
@@ -1071,6 +1097,14 @@ import SeoBody from "../components/SeoBody.astro";
         .landing-rooms-inner { padding-left: 2.5rem; padding-right: 2.5rem; }
         .landing-room-list { grid-template-columns: 1fr; }
         .landing-room { min-height: 0; }
+        /* En una sola columna no hay fila coja que rellenar. */
+        .landing-room-list > li:last-child:nth-child(3n + 1) .landing-room {
+          display: flex;
+          grid-template-columns: none;
+        }
+        .landing-room-list > li:last-child:nth-child(3n + 1) .landing-room-thumb-wrap {
+          margin: clamp(1.4rem, 3vh, 2rem) 0 clamp(1.2rem, 2.5vh, 1.8rem);
+        }
         .landing-room-desc { max-width: 62ch; }
       }
 
