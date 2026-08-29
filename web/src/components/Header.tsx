@@ -5,23 +5,33 @@ interface HeaderProps {
   lang: Lang;
   onLangChange: (lang: Lang) => void;
   onGoToTop?: () => void;
+  onGoToRooms?: () => void;
   isScrolled?: boolean;
+  currentPath?: string;
 }
 
 export default function Header({
   lang,
   onLangChange,
   onGoToTop,
+  onGoToRooms,
   isScrolled = false,
+  currentPath,
 }: HeaderProps) {
   const t = LANDING_COPY[lang];
+  const isCollabActive = currentPath === "/colaborar" || currentPath === "/collaborate";
 
   const handleBrandClick = (e: React.MouseEvent) => {
-    e.preventDefault();
     if (onGoToTop) {
+      e.preventDefault();
       onGoToTop();
-    } else {
-      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
+
+  const handleGalleryClick = (e: React.MouseEvent) => {
+    if (onGoToRooms) {
+      e.preventDefault();
+      onGoToRooms();
     }
   };
 
@@ -35,11 +45,6 @@ export default function Header({
           onClick={handleBrandClick}
           aria-label={`${t.brandFirst} ${t.brandSecond}`}
         >
-          {/* 256 px y no el original de 1254: la marca se dibuja a 26-40 px,
-              así que el archivo grande eran 530 KB en la ruta crítica de la
-              portada para no verse. `width`/`height` van puestos aunque el CSS
-              mande, que es lo que evita el salto de maquetación mientras la
-              imagen viaja. */}
           <img
             className="landing-brand-mark"
             src="/icons/tensormesh-mark.png"
@@ -54,27 +59,69 @@ export default function Header({
           </span>
         </a>
 
-        {/* Selector de idioma */}
-        <div className="landing-lang-toggle" role="group" aria-label="Idioma / Language">
-          <button
-            type="button"
-            className={`landing-lang-btn ${lang === "es" ? "on" : ""}`}
-            onClick={() => onLangChange("es")}
-            aria-pressed={lang === "es"}
+        {/* Acciones de Navegación & Idioma */}
+        <div className="landing-nav-group">
+          {/* Enlace a Galería */}
+          <a
+            className="landing-nav-link"
+            href="/#galeria"
+            onClick={handleGalleryClick}
           >
-            ES
-          </button>
-          <button
-            type="button"
-            className={`landing-lang-btn ${lang === "en" ? "on" : ""}`}
-            onClick={() => onLangChange("en")}
-            aria-pressed={lang === "en"}
+            <span>{lang === "es" ? "Galería" : "Gallery"}</span>
+          </a>
+
+          {/* Botón de Colaboración con Motion & Shimmer */}
+          <a
+            className={`landing-nav-collab-btn ${isCollabActive ? "active" : ""}`}
+            href="/colaborar"
+            title={lang === "es" ? "Galería pública y algoritmos colaborativos" : "Public gallery & collaborative algorithms"}
           >
-            EN
-          </button>
+            <span className="collab-btn-glow" aria-hidden="true" />
+            <span className="collab-btn-content">
+              <svg
+                className="collab-btn-glyph"
+                viewBox="0 0 14 14"
+                width="13"
+                height="13"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                aria-hidden="true"
+              >
+                <path
+                  d="M7 1L12.5 7L7 13L1.5 7L7 1Z"
+                  stroke="currentColor"
+                  strokeWidth="1.25"
+                  strokeLinejoin="round"
+                />
+                <circle cx="7" cy="7" r="1.5" fill="currentColor" />
+              </svg>
+              <span>{lang === "es" ? "Colaborar" : "Collaborate"}</span>
+            </span>
+          </a>
+
+          {/* Selector de idioma */}
+          <div className="landing-lang-toggle" role="group" aria-label="Idioma / Language">
+            <button
+              type="button"
+              className={`landing-lang-btn ${lang === "es" ? "on" : ""}`}
+              onClick={() => onLangChange("es")}
+              aria-pressed={lang === "es"}
+            >
+              ES
+            </button>
+            <button
+              type="button"
+              className={`landing-lang-btn ${lang === "en" ? "on" : ""}`}
+              onClick={() => onLangChange("en")}
+              aria-pressed={lang === "en"}
+            >
+              EN
+            </button>
+          </div>
         </div>
       </div>
     </header>
   );
 }
+
 

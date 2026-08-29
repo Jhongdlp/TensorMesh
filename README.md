@@ -12,9 +12,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178c6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Astro](https://img.shields.io/badge/Astro-4.0+-ff5d01?style=flat-square&logo=astro&logoColor=white)](https://astro.build/)
 [![Python](https://img.shields.io/badge/Pipeline-Python%203.14%20|%20NumPy-3776ab?style=flat-square&logo=python&logoColor=white)](https://numpy.org/)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](https://opensource.org/licenses/MIT)
-
-[**Live Application**](https://tensormesh.vercel.app) &nbsp;•&nbsp; [**3D Galleries**](#interactive-3d-galleries) &nbsp;•&nbsp; [**WebGPU Engine**](#webgpu-engine--hardware-pipeline) &nbsp;•&nbsp; [**Data Pipeline**](#data-pipeline--compressed-sparse-formats) &nbsp;•&nbsp; [**Color Science**](#perceptual-color-science--ui-architecture) &nbsp;•&nbsp; [**Quickstart**](#quickstart--development)
+[**Live Application**](https://tensormesh.vercel.app) &nbsp;•&nbsp; [**3D Galleries**](#interactive-3d-galleries) &nbsp;•&nbsp; [**WebGPU Engine**](#webgpu-engine--hardware-pipeline) &nbsp;•&nbsp; [**Quickstart**](#quickstart--development) &nbsp;•&nbsp; [**Contributing**](CONTRIBUTING.md)
 
 ---
 
@@ -220,6 +218,24 @@ npm run test:render
 
 3. **Stress Metric**:
    $$\sigma = \frac{\sum_{i < j} (d_{ij} - \hat{d}_{ij})^2}{\sum_{i < j} d_{ij}^2}$$
+
+---
+
+## 🤝 Contributing & Community Public Gallery
+
+TensorMesh is an open-source public gallery and visual AI laboratory. We are actively inviting developers, researchers, and creative coders to build and submit their own **WebGPU algorithms & visual courses**.
+
+- **English Guide**: Read the [**CONTRIBUTING.md**](CONTRIBUTING.md) for architecture templates, WGSL shader boilerplates, and step-by-step instructions.
+- **Guía en Español**: Consulta [**CONTRIBUTING_ES.md**](CONTRIBUTING_ES.md) para la guía completa en español.
+- **Online Hub**: Explore our live [**Collaborate / Colaborar**](https://tensormesh.vercel.app/colaborar) page.
+
+### Desired Community Algorithms (Wishlist)
+- **3D Transformers & Attention Maps** ($Q, K, V$ softmax routing in 3D).
+- **Diffusion Models & Latent Denoising** (Iterative reverse diffusion on GPU).
+- **Neural Cellular Automata (NCA)** (Pattern growth & morphogenesis).
+- **Barnes-Hut N-Body Gravity** (Spatial octree partitioning in compute shaders).
+- **Real-Time t-SNE / UMAP** (High-dimensional manifold unfolding on GPU).
+- **Quantum Circuit Simulator** (Bloch spheres & state entanglement).
 
 ---
 

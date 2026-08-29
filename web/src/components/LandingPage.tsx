@@ -744,7 +744,9 @@ export default function LandingPage({ onExplore }: LandingPageProps) {
         lang={lang}
         onLangChange={setLang}
         onGoToTop={goToTop}
+        onGoToRooms={goToRooms}
         isScrolled={isScrolled}
+        currentPath="/"
       />
 
       {/* Widget de Autor (Jhongdlp) en esquina inferior derecha */}

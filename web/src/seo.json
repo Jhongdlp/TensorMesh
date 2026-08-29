@@ -222,6 +222,44 @@
     },
 
     {
+      "path": "/colaborar",
+      "file": "colaborar.astro",
+      "type": "website",
+      "title": "Colaborar · Galería Pública y Cursos WebGPU en TensorMesh",
+      "description": "Contribuye con tus propios algoritmos y cursos interactivos en WebGPU. Galería abierta, código libre y aprendizaje 3D para la comunidad de IA.",
+      "keywords": [
+        "colaborar WebGPU",
+        "algoritmos open source",
+        "cursos de inteligencia artificial",
+        "shaders WGSL",
+        "computación gráfica interactiva",
+        "TensorMesh comunidad"
+      ],
+      "kicker": "COMUNIDAD · WEBGPU OPEN LAB",
+      "ogLines": ["Galería Pública", "y Colaboración"],
+      "ogNote": "Crea tus propios algoritmos y cursos interactivos en WebGPU.",
+      "preview": "previews/nebula-ui-en.jpg"
+    },
+    {
+      "path": "/collaborate",
+      "file": "collaborate.astro",
+      "type": "website",
+      "title": "Collaborate · Public Gallery & WebGPU Courses in TensorMesh",
+      "description": "Contribute your own interactive WebGPU algorithms and courses. Open gallery, MIT open-source, and 3D visual learning for the AI community.",
+      "keywords": [
+        "collaborate WebGPU",
+        "open source algorithms",
+        "AI courses 3D",
+        "WGSL shaders",
+        "interactive graphics compute",
+        "TensorMesh community"
+      ],
+      "kicker": "COMMUNITY · WEBGPU OPEN LAB",
+      "ogLines": ["Public Gallery", "& Collaboration"],
+      "ogNote": "Build your own algorithms and interactive courses in WebGPU.",
+      "preview": "previews/nebula-ui-en.jpg"
+    },
+    {
       "path": "/galaxia",
       "file": "galaxia.astro",
       "redirectTo": "/embedding-nebula",
